@@ -26,7 +26,7 @@ These are the public beta's documented feature boundaries. They are not a guaran
 
 ## Report a problem
 
-Use the [bug report form](https://github.com/IkasanEIP/IkasanStudio/issues/new?template=bug_report.yml). Include:
+Use the [bug report form](https://github.com/RealisticSolutions/IkasanStudio/issues/new?template=bug_report.yml). Include:
 
 - Ikasan Studio version, IntelliJ IDEA version/edition and full build number.
 - Operating system and selected Ikasan version (or “not selected” if setup failed first).

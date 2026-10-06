@@ -1,5 +1,14 @@
 # Ikasan Studio Project Context
 
+## Community checkout
+
+This checkout is the Realistic Solutions community fork. `origin` is
+`RealisticSolutions/IkasanStudio`; `upstream` is `IkasanEIP/IkasanStudio`.
+Prepare community branding and releases here; shared functionality and upstream fixes
+belong in a separate upstream session/checkout. Preserve the BSD 3-Clause licence
+and original Ikasan attribution. See [community beta preparation](docs/CommunityBetaRelease.md).
+The community candidate workflow does not publish; publication requires an explicit user request.
+
 This file is durable project context for AI coding agents and human contributors. Read it before making product, UX, architecture, or implementation decisions in this repository.
 
 ## Mission

@@ -27,7 +27,7 @@ The native MCP module compiles against IDEA 2026.2.2 and its bundled MCP Server 
 Clone the repository and run the automated tests:
 
 ```bash
-git clone https://github.com/ikasanEIP/IkasanStudio.git
+git clone https://github.com/RealisticSolutions/IkasanStudio.git
 cd IkasanStudio
 ./gradlew test
 ```

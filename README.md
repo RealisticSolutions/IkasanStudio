@@ -1,11 +1,13 @@
 ![Ikasan](docs/images/Ikasan-title-transparent.png)
 
-# Ikasan Studio
+# Ikasan Studio Community
 
 <!-- Plugin description -->
 Visually design, generate, run and test Ikasan integration applications inside IntelliJ IDEA.
 
-## Ikasan Studio — Public Beta
+Ikasan Studio Community is the Realistic Solutions community fork of Ikasan Studio, originally developed by the Ikasan Enterprise Integration Platform project.
+
+## Ikasan Studio Community — Public Beta
 
 Build applications for the Ikasan Enterprise Integration Platform (ESB), with support for Ikasan 3.3.9 and 4.1.6.
 
@@ -26,19 +28,21 @@ Optional AI integration lets compatible assistants inspect and update your flow 
 
 ### Documentation and tutorials
 
-- [Getting started](https://github.com/IkasanEIP/IkasanStudio/blob/main/docs/GettingStarted.md)
-- [Supported versions](https://github.com/IkasanEIP/IkasanStudio/blob/main/docs/SupportedVersions.md)
-- [Video tutorials — recommended viewing order](https://github.com/IkasanEIP/IkasanStudio/blob/main/tutorials/README.md)
-- [Known limitations](https://github.com/IkasanEIP/IkasanStudio/blob/main/docs/KnownLimitations.md)
+- [Getting started](https://github.com/RealisticSolutions/IkasanStudio/blob/main/docs/GettingStarted.md)
+- [Supported versions](https://github.com/RealisticSolutions/IkasanStudio/blob/main/docs/SupportedVersions.md)
+- [Video tutorials — recommended viewing order](https://github.com/RealisticSolutions/IkasanStudio/blob/main/tutorials/README.md)
+- [Known limitations](https://github.com/RealisticSolutions/IkasanStudio/blob/main/docs/KnownLimitations.md)
 
 ### Feedback
 
-[Report a bug or suggest an improvement](https://github.com/IkasanEIP/IkasanStudio/issues). For problems, include the Studio version, IntelliJ IDEA version/build, operating system, selected Ikasan version and reproduction steps, with expected and actual results. Remove sensitive data from attachments.
+Maintained by **Realistic Solutions**. Contact [community support](mailto:support@realisticsolutions.co.uk).
 
-Ikasan Studio is open source under the [BSD 3-Clause License](https://github.com/IkasanEIP/IkasanStudio/blob/main/LICENSE.txt); [browse the source code](https://github.com/IkasanEIP/IkasanStudio).
+[Report a bug or suggest an improvement](https://github.com/RealisticSolutions/IkasanStudio/issues). For problems, include the Studio version, IntelliJ IDEA version/build, operating system, selected Ikasan version and reproduction steps, with expected and actual results. Remove sensitive data from attachments.
+
+Ikasan Studio is open source under the [BSD 3-Clause License](https://github.com/RealisticSolutions/IkasanStudio/blob/main/LICENSE.txt); [browse the source code](https://github.com/RealisticSolutions/IkasanStudio).
 <!-- Plugin description end -->
 
-**Release status:** Preparing for public beta on JetBrains Marketplace. Until publication, use a candidate ZIP or build the plugin as described below.
+**Release status:** Preparing the first Realistic Solutions community beta. No community Marketplace release has been submitted from this checkout. See [community beta preparation](docs/CommunityBetaRelease.md) for identity decisions, candidate checks and publication prerequisites.
 
 [Get started](#get-started) · [Documentation](#documentation) · [Build and contribute](#build-and-contribute) · [Report a problem](#report-a-problem)
 
@@ -187,7 +191,7 @@ Roadmap status tables and dated audits describe their recorded checkout, not nec
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before changing the plugin. The main plugin and headless engine use Java 17. The optional native MCP module needs a Java 21 toolchain for its newer IntelliJ SDK and emits JVM 17 bytecode. Gradle can provision the configured toolchains; first builds require network access for dependencies and IDE downloads.
 
 ```sh
-git clone https://github.com/ikasanEIP/IkasanStudio.git
+git clone https://github.com/RealisticSolutions/IkasanStudio.git
 cd IkasanStudio
 ./gradlew test
 ./gradlew buildPlugin
@@ -245,7 +249,7 @@ On Windows shells that split Maven property arguments, quote each complete `-Dna
 
 ## Report a problem
 
-Use the repository's [bug report](https://github.com/ikasanEIP/IkasanStudio/issues/new?template=bug_report.yml) or [feature request](https://github.com/ikasanEIP/IkasanStudio/issues/new?template=feature_request.yml) template. Include the plugin version/commit, full IDE build, operating system, selected pack and reproduction steps.
+Use the repository's [bug report](https://github.com/RealisticSolutions/IkasanStudio/issues/new?template=bug_report.yml) or [feature request](https://github.com/RealisticSolutions/IkasanStudio/issues/new?template=feature_request.yml) template. Include the plugin version/commit, full IDE build, operating system, selected pack and reproduction steps.
 
 **Tools → Ikasan Studio → Collect Ikasan Studio Diagnostics…** creates a local ZIP; it does not upload it. Review its contents and remove sensitive information before attaching anything. See [Diagnostics and privacy](docs/DiagnosticsAndPrivacy.md) for collection and error-reporting behaviour.
 
@@ -253,4 +257,4 @@ Report suspected vulnerabilities privately using [SECURITY.md](SECURITY.md). Par
 
 ## Licence and acknowledgements
 
-Ikasan Studio is licensed under the [BSD 3-Clause License](LICENSE.txt). It is part of the [Ikasan project](https://github.com/ikasanEIP) and is based on the [IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template).
+Ikasan Studio is licensed under the [BSD 3-Clause License](LICENSE.txt). This community fork is maintained by Realistic Solutions and derives from [IkasanEIP/IkasanStudio](https://github.com/IkasanEIP/IkasanStudio). The original Ikasan copyright and attribution are retained. The upstream project is part of the [Ikasan project](https://github.com/ikasanEIP) and is based on the [IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template).

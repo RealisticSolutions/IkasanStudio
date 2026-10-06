@@ -1,4 +1,4 @@
-# Installing Ikasan Studio
+# Installing Ikasan Studio Community
 
 The public beta is being prepared. Until a Marketplace release is published, install an approved candidate ZIP or [build the plugin](../README.md#build-and-contribute). This guide does not imply that a listing is already available. See the [README release status](../README.md) and [supported versions](SupportedVersions.md).
 
@@ -6,7 +6,7 @@ The public beta is being prepared. Until a Marketplace release is published, ins
 
 Once published, use the official listing linked from this repository. Check the publisher, version and compatibility before installing, then restart IntelliJ if prompted.
 
-A release in Marketplace's **beta channel** is separate from its default channel. To access it, open **Settings → Plugins → gear → Manage Plugin Repositories**, add `https://plugins.jetbrains.com/plugins/beta/list`, then search for **Ikasan Studio** in the Marketplace tab. This repository exposes beta updates for other plugins too. Follow the listing's release instructions; a hidden preview may instead require a direct listing link from the maintainers.
+A release in Marketplace's **beta channel** is separate from its default channel. To access it, open **Settings → Plugins → gear → Manage Plugin Repositories**, add `https://plugins.jetbrains.com/plugins/beta/list`, then search for **Ikasan Studio Community** in the Marketplace tab and check the **Realistic Solutions** vendor. This repository exposes beta updates for other plugins too. Follow the listing's release instructions; a hidden preview may instead require a direct listing link from the maintainers.
 
 See JetBrains' [custom release channels](https://plugins.jetbrains.com/docs/marketplace/custom-release-channels.html) and [hidden plugins](https://plugins.jetbrains.com/docs/marketplace/hidden-plugin.html) documentation. These routes become useful only after the corresponding release has been published.
 

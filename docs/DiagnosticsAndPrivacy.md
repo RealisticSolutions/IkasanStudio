@@ -30,7 +30,7 @@ Review the IDE's report details, selected attachments and privacy notice before 
 
 Expected configuration, connectivity and generation failures remain recoverable notifications/warnings; they are not promoted to fatal errors just to obtain a report. The remaining explicit fatal log sites were reviewed: they contain invariant descriptions, dimensions and Java class names. The view-handler mismatch message no longer includes the component object.
 
-After publishing a plugin update with this registration, the Marketplace plugin administration page provides an **Exceptions** tab for the development team. This uses the existing plugin ID `com.github.ikasaneip.ikasanstudio`. Uploading/publishing and confirming team access remain release steps; local registration tests do not prove delivery to the Marketplace backend.
+After publishing a plugin update with this registration, the Marketplace plugin administration page provides an **Exceptions** tab for the development team. This uses the community plugin ID `com.realisticsolutions.ikasanstudio.community`. Uploading/publishing and confirming team access remain release steps; local registration tests do not prove delivery to the Marketplace backend.
 
 The IDEA extension test checks that exactly one Marketplace reporter belongs to Studio and provides a report action and privacy notice. Re-run the tests and inspect the packaged descriptor for each candidate; local checks do not establish Marketplace delivery.
 
@@ -45,7 +45,7 @@ See [JetBrains Exception Analyzer](https://plugins.jetbrains.com/docs/marketplac
 
 ## What to include in feedback
 
-Use the [bug report form](https://github.com/IkasanEIP/IkasanStudio/issues/new?template=bug_report.yml) with your Studio version, IntelliJ IDEA version/edition and build, operating system, selected Ikasan version and reproduction steps. Describe expected and actual behaviour. If setup failed before selecting a version, say so. Attach only reviewed, sanitised diagnostics; report vulnerabilities through [SECURITY.md](../SECURITY.md).
+Use the [bug report form](https://github.com/RealisticSolutions/IkasanStudio/issues/new?template=bug_report.yml) with your Studio version, IntelliJ IDEA version/edition and build, operating system, selected Ikasan version and reproduction steps. Describe expected and actual behaviour. If setup failed before selecting a version, say so. Attach only reviewed, sanitised diagnostics; report vulnerabilities through [SECURITY.md](../SECURITY.md).
 
 ## Collecting diagnostics
 

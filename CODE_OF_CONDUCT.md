@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces and when an individual 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to `david@davihilton.net`. All complaints will be reviewed and investigated promptly and fairly. Community leaders will respect the privacy and security of the reporter.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to `support@realisticsolutions.co.uk`. All complaints will be reviewed and investigated promptly and fairly. Community leaders will respect the privacy and security of the reporter.
 
 ## Enforcement Guidelines
 
@@ -71,4 +71,3 @@ Community leaders will use these guidelines when determining consequences for be
 This Code of Conduct is adapted from the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html).
 
 Community Impact Guidelines were inspired by [Mozilla's code of conduct enforcement ladder](https://github.com/mozilla/diversity).
-

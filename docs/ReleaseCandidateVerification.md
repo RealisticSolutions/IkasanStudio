@@ -3,6 +3,9 @@
 For the staged first-publication schedule, ownership and Marketplace submission steps, see the
 [Marketplace release plan](MarketplaceReleasePlan.md).
 
+For this Realistic Solutions fork, resolve the identity and contact decisions in
+[Community beta preparation](CommunityBetaRelease.md) before freezing a candidate.
+
 Do not equate a successful build or Plugin Verifier result with an installation or project-workflow test. Keep the candidate ZIP, its SHA-256, reports, IDE builds, runtimes and manual results together.
 
 After Marketplace approval, also verify installation of the published version through its intended channel or hidden listing link, following [Installation](Installation.md). Confirm that the downloaded version matches the approved candidate. ZIP installation alone does not verify listing visibility or channel setup.
@@ -62,7 +65,7 @@ Use a new directory for every clean-profile run; never point this at the develop
 ./gradlew buildSearchableOptions --rerun -PstudioSandboxDirectory=/tmp/ikasan-studio-rc-new-profile
 ```
 
-This starts the target IDE headlessly, loads the plugin and traverses its settings UI. Verify the log records `Loaded custom plugins: IkasanStudio`, the expected runtime, and no Studio-attributed errors. The log is below `<sandbox>/ikasanstudio/IC-2024.3.7/log/idea.log`. This is a startup/settings check only.
+This starts the target IDE headlessly, loads the plugin and traverses its settings UI. Verify the log records the `Ikasan Studio Community` plugin, the expected runtime, and no Studio-attributed errors. Locate `idea.log` beneath the selected sandbox directory. This is a startup/settings check only.
 
 For interactive project checks with a separate sandbox:
 

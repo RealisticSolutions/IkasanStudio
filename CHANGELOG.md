@@ -5,6 +5,9 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Prepare the Realistic Solutions community fork with community plugin branding and support links, preserving the original Ikasan attribution and BSD 3-Clause licence.
+- Replace automatic Marketplace publication with a manual candidate-build workflow producing a ZIP, checksums and verification evidence; make CI release drafts opt-in.
+
 - Offer reviewed, meta-pack-driven migrations rules in IDE and offline migration, with recovery and exact-plan source comparison.
 
 - Read generation rollback snapshots and post-format fingerprints off the UI thread, rejecting stale files before commit.

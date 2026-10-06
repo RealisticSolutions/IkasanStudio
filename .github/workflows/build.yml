@@ -250,10 +250,10 @@ jobs:
           path: ${{ github.workspace }}/build/reports/pluginVerifier
 
   # Prepare a draft release for GitHub Releases page for the manual verification
-  # If accepted and published, release workflow would be triggered
+  # Draft creation is opt-in; publishing a draft does not trigger Marketplace uploads.
   releaseDraft:
     name: Release draft
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && vars.ENABLE_RELEASE_DRAFTS == 'true'
     needs: [ build, test, inspectCode, verify ]
     runs-on: ubuntu-latest
     permissions:

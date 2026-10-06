@@ -8,7 +8,7 @@ Ikasan Studio is approaching its first formal Marketplace release. Security fixe
 
 Please do not disclose suspected vulnerabilities in a public GitHub issue, discussion, or pull request.
 
-Use GitHub's private vulnerability reporting facility on the repository's **Security** tab when it is available. If private reporting is unavailable, email `david@davihilton.net` with the subject **Ikasan Studio security report**.
+Use GitHub's private vulnerability reporting facility on the community repository's **Security** tab when it is available. If private reporting is unavailable, email `support@realisticsolutions.co.uk` with the subject **Ikasan Studio Community security report**.
 
 Include as much of the following as is safe to share:
 
@@ -26,4 +26,3 @@ We will acknowledge a report as soon as practical, investigate it, and coordinat
 ## Scope
 
 Security reports may concern the plugin, generated source code, bundled meta-packs, handling of project files or credentials, or interaction with IntelliJ Platform APIs. General bugs and feature requests should use the public issue templates instead.
-

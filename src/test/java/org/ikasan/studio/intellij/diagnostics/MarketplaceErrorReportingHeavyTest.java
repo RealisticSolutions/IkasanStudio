@@ -11,7 +11,7 @@ public class MarketplaceErrorReportingHeavyTest extends HeavyPlatformTestCase {
         var reporters = ExtensionPointName.<ErrorReportSubmitter>create("com.intellij.errorHandler")
                 .getExtensionList().stream()
                 .filter(reporter -> reporter.getPluginDescriptor() != null
-                        && "com.github.ikasaneip.ikasanstudio".equals(reporter.getPluginDescriptor().getPluginId().getIdString()))
+                        && "com.realisticsolutions.ikasanstudio.community".equals(reporter.getPluginDescriptor().getPluginId().getIdString()))
                 .toList();
         assertEquals(1, reporters.size());
         var reporter = reporters.get(0);

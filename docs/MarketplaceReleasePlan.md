@@ -1,4 +1,7 @@
-# Ikasan Studio 1.0 Marketplace release plan
+# Ikasan Studio Community 1.0 Marketplace release plan
+
+Community identity, checkout evidence and outstanding first-beta decisions are tracked in
+[Community beta preparation](CommunityBetaRelease.md). Realistic Solutions owns this fork’s release process.
 
 This is a phased plan for a public beta followed by 1.0, with dates driven by readiness. It complements the existing
 [release-candidate verification](ReleaseCandidateVerification.md) and [manual checklist](MarketplaceReleaseManualChecklist.md).
@@ -35,7 +38,7 @@ choosing this route. [Hidden release](https://plugins.jetbrains.com/docs/marketp
 | Regression    | Plugin/headless tests;`regression-tests/migration/`                                     | Run fresh migration baseline/target reports, including wiretaps and preserved user code            |
 | Distribution  | Gradle signing and publishing configured                                                | Confirm account ownership, signing material, secrets and protected publication process             |
 | Documentation | Getting started, migration, AI, testing, recovery and diagnostics guides                | Clean-machine walkthrough; remove stale wording and publish accurate limitations                   |
-| Listing       | Stable ID`com.github.ikasaneip.ikasanstudio`, vendor metadata, icon, README description | Confirm public contact/URLs, screenshots, licence, privacy statement and listing status            |
+| Listing       | Community ID `com.realisticsolutions.ikasanstudio.community`, Realistic Solutions vendor, fork README and links | Confirm public contact, screenshots, licence and listing status |
 
 Account state, repository secrets, branch protection, signing credentials and Marketplace ownership have
 not been inspected.
@@ -113,8 +116,8 @@ Provide the applicable privacy policy if personal data is collected, as required
 
 Manually upload the signed candidate, select the intended vendor/channel and Hidden flag,
 complete listing details and supply concise reviewer setup instructions with disposable test data.
-Do not publish the GitHub release merely to create the first Marketplace entry: our present release
-workflow reacts to both `prereleased` and `released` events. The channel comes from `pluginVersion`,
+The community candidate workflow is manual and does not publish to GitHub or Marketplace.
+The first upload remains manual. If automated publishing is introduced later, the channel comes from `pluginVersion`,
 not the GitHub prerelease checkbox: `1.0.0` maps to default, `1.0.0-beta.1` to beta.
 
 Every new plugin and update is reviewed. JetBrains gives no guaranteed review time and advises
