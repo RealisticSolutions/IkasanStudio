@@ -109,3 +109,9 @@ release verification and outstanding checks are tracked separately in
 an [Unreleased] section for changes intended for the next release. Record useful
 user-facing changes here; keep implementation details and test evidence in the
 relevant documentation rather than maintaining a development diary. -->
+
+## [1.0.0-beta.2] - 2026-10-08
+
+- Move handwritten components between flows using IntelliJ's public refactoring API, preserving Java references and generated Spring bean names.
+- Wait for Maven import and post-processing before compiling migrated projects; handle import failures and project closure.
+- Verify binary compatibility with IDEA 2024.2, 2024.3.7, 2026.2.2 and the 2026.3 EAP build 263.6259.32.
