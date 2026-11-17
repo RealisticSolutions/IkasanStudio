@@ -39,8 +39,11 @@ public class CanvasCachedLayoutHeavyTest extends HeavyPlatformTestCase {
                 var endpoint = handler.getEndpointViewHandlerFor(consumer);
                 // Actual server geometry: a 90 px card placed 20 px beyond the endpoint connector.
                 int serverLeft = endpoint.getLeftConnectorPoint().x - 20 - 90;
-                assertTrue("Server card must clear the transport/status hover gutter at offset " + configured,
-                        serverLeft > 24 + 14 + 6 + 160);
+                int statusRight = 24 + 14 + 6 + graphics.getFontMetrics(StudioUIUtils.getMainFont()).stringWidth("Recovering");
+                assertTrue("Server card must clear the status text and hover area at offset " + configured,
+                        serverLeft >= statusRight + 12);
+                if (configured <= org.ikasan.studio.intellij.settings.IkasanStudioSettings.DEFAULT_FLOW_X_START_POINT)
+                    assertTrue("Default harness gutter should remain compact", serverLeft <= statusRight + 80);
                 assertEquals("Idle layout preserves the configured offset", configured,
                         IkasanModuleViewHandler.flowXStartPoint(configured, false));
             }

@@ -2888,9 +2888,12 @@ public class DesignerCanvas extends JPanel implements com.intellij.openapi.actio
             // "labelLeftX/labelTopY/labelBottomY", not one term suddenly named after buttons.
             @SuppressWarnings("UnnecessaryLocalVariable")
             int labelTopY = buttonsTopY;
-            // Generous, un-measured horizontal band to the right of the button column - the label's actual
-            // width varies per status text and isn't worth recomputing here just to shrink a hover target.
-            if (xpos > labelLeftX && xpos < labelLeftX + 160 && ypos >= labelTopY && ypos <= labelBottomY) {
+            // Match the painted, word-wrapped label instead of reserving an invisible
+            // 160 px band that can intercept hover events intended for a nearby harness card.
+            var metrics = getFontMetrics(StudioUIUtils.getMainFont());
+            int labelWidth = java.util.Arrays.stream(flowStatusDisplayLabel(flowStatuses.getRawState(flow.getIdentity())).split(" "))
+                    .mapToInt(metrics::stringWidth).max().orElse(0);
+            if (xpos > labelLeftX && xpos < labelLeftX + labelWidth && ypos >= labelTopY && ypos <= labelBottomY) {
                 return flow;
             }
         }

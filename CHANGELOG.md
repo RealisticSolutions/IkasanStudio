@@ -5,6 +5,14 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Keep the Spring registration review popup compact by bounding wrapped help text and allowing its code preview to scroll instead of forcing full-screen height.
+
+- Offer reviewed, staged Spring registration for copied public component classes during source import. Create explicit user-owned @Import wiring with the selected copies, preserve existing files, allow revert, and reject stale or forged registration plans.
+
+- Reduce the extra left harness gutter by 70 pixels and match status-label hover bounds to the painted text, keeping FTP/SFTP cards clear without an oversized empty column.
+
+- Flag copied Spring providers outside the destination application’s component scan as actionable source-import issues, with explicit user-owned wiring guidance in the review and saved report.
+
 - Finish imported-model generation and JDK alignment before requesting Maven reimport. Refresh even when the POM is unchanged so stale module language/bytecode levels do not leave copied Java 8+ source compiling as Java 7.
 
 - Offer Reload Maven project directly on the Studio waiting screen. Request a full Maven workspace reimport rather than only repeating the readiness check, and distinguish these actions in startup guidance.

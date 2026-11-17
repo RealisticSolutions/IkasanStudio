@@ -15,7 +15,7 @@ import java.awt.*;
 public class IkasanModuleViewHandler extends AbstractViewHandlerIntellij {
     // A file-server card and connector need their own column beyond the fixed
     // transport buttons and status hover area at the left of the canvas.
-    private static final int FILE_SERVER_LEFT_RESERVE = 180;
+    private static final int FILE_SERVER_LEFT_RESERVE = 110;
     public static final int FLOW_X_RIGHT_BUFFER = 260;
     public static final int FLOW_Y_BOTTTOM_BUFFER = 180;
     public static final int SCROLL_BAR_HEIGHT = 10;

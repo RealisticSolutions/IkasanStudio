@@ -497,6 +497,47 @@ public class ImportSourceModuleDialogHeavyTest extends HeavyPlatformTestCase {
                 base.dependencies(), base.notes(), base.originalPom(), base.generatedInputs(), support, base.supportInputs(), base.identity());
     }
 
+    @SuppressWarnings("unchecked")
+    public void testSpringRegistrationIsOfferedAfterCopyAndCanBeStagedAndReverted() throws Exception {
+        var destination = Files.createTempDirectory("studio-registration-preview");
+        var dialog = new ImportSourceModuleDialog(getProject());
+        String source = "src/main/java/org/original/Copied.java";
+        var analysis = new SourceModuleImport.Analysis(java.nio.file.Path.of("/original"), destination,
+                List.of(new SourceModuleImport.FileChoice(source, "user/src/main/java/org/original/Copied.java",
+                        encoded("package org.original; @org.springframework.stereotype.Component public class Copied {}"),
+                        null, true, false, "Referenced component")),
+                List.of(new SourceModuleImport.BeanRequirement("copied", "org.original.Copied", "generated/Factory.java", 1, List.of())),
+                List.of(), List.of(), List.of(), "", Map.of("generated/Application.java", encoded(
+                        "package org.ikasan.studio.boot; @org.springframework.context.annotation.ComponentScan(\"org.ikasan.studio.boot\") class Application {}")),
+                List.of(), Map.of(), identity(java.nio.file.Path.of("/original"), destination, "Example", "Example"));
+        try {
+            dialog.acceptAnalysis(analysis, analysis.sourceRoot());
+            var panel = (JPanel) field(dialog, "registrationPanel");
+            assertFalse(panel.isVisible());
+            ((Set<String>) field(dialog, "selectedFiles")).add(source);
+            var refresh = dialog.getClass().getDeclaredMethod("refreshReview"); refresh.setAccessible(true); refresh.invoke(dialog);
+            com.intellij.testFramework.PlatformTestUtil.waitWithEventsDispatching("Spring registration was not offered", panel::isVisible, 10);
+            var candidate = (SourceModuleImport.SpringRegistration) field(dialog, "registrationCandidate");
+            assertEquals(List.of("org.original.Copied"), candidate.components());
+            assertFalse(Files.exists(destination.resolve(candidate.destination())));
+            var approved = dialog.getClass().getDeclaredField("approvedRegistration"); approved.setAccessible(true); approved.set(dialog, candidate);
+            refresh.invoke(dialog);
+            var button = (JButton) field(dialog, "registrationButton");
+            com.intellij.testFramework.PlatformTestUtil.waitWithEventsDispatching("Staged registration was not shown",
+                    () -> button.getText().equals(org.ikasan.studio.ui.StudioBundle.message("sourceImport.registration.revert")), 10);
+            assertTrue(((List<SourceModuleImport.ReviewAction>) field(dialog, "standaloneIssues")).isEmpty());
+            button.doClick();
+            com.intellij.testFramework.PlatformTestUtil.waitWithEventsDispatching("Registration revert did not restore the scan decision",
+                    () -> fieldValue(dialog, "approvedRegistration") == null
+                            && !((List<?>) fieldValue(dialog, "standaloneIssues")).isEmpty(), 10);
+            assertFalse(Files.exists(destination.resolve(candidate.destination())));
+        } finally { dialog.close(DialogWrapper.CANCEL_EXIT_CODE); }
+    }
+
+    private Object fieldValue(Object target, String name) {
+        try { return field(target, name); } catch (Exception failure) { throw new RuntimeException(failure); }
+    }
+
     private ImportSourceModuleDialog previewDialog() {
         var dialog = new ImportSourceModuleDialog(getProject());
         var analysis = new SourceModuleImport.Analysis(java.nio.file.Path.of("/original"), java.nio.file.Path.of("/destination"), List.of(

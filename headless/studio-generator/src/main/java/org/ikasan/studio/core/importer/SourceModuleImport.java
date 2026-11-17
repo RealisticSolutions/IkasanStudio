@@ -4,6 +4,7 @@ import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.NameExpr;
@@ -33,6 +34,7 @@ public final class SourceModuleImport {
     private static final Set<String> SKIP = Set.of(".git", ".idea", "target", "build", ".gradle", "node_modules", "generated");
     private static final int LIMIT = 10_000;
     private static final long MAX_BYTES = 2 * 1024 * 1024;
+    private static final String UNSCANNED_PROVIDER = "Copied Spring provider is outside destination component scanning: ";
 
     public record FileChoice(String source, String destination, String bytes, String previous,
                              boolean recommended, boolean wiring, String reason, boolean identicalToDestination) {
@@ -158,6 +160,19 @@ public final class SourceModuleImport {
         List<ManagedFile> managed = new ArrayList<>();
         Map<String, String> supportInputs = new TreeMap<>();
         supportInputs.put(SUPPORT_CUSTOMISATIONS, Objects.toString(existing(safe(destination, SUPPORT_CUSTOMISATIONS)), ""));
+        // Include existing explicit user-owned registrations in the review and its stale-input guard.
+        Path destinationSources = safe(destination, "user/src/main/java");
+        for (Path file : Files.isDirectory(destinationSources, LinkOption.NOFOLLOW_LINKS)
+                ? inventory(destinationSources, null, checkCancelled) : List.<Path>of()) {
+            checkCancelled.run();
+            if (!file.toString().endsWith(".java")) continue;
+            byte[] content = read(file);
+            var parsed = parser.parse(new String(content, StandardCharsets.UTF_8));
+            if (parsed.isSuccessful() && parsed.getResult().isPresent()
+                    && parsed.getResult().get().getTypes().stream().anyMatch(type -> type.getAnnotations().stream()
+                            .anyMatch(annotation -> annotation.getName().getIdentifier().equals("Import"))))
+                supportInputs.put(relative(destination, file), encode(content));
+        }
         Map<String, String> expectedSupport = expectedSupport(destination, units, supportInputs, notes);
         for (Iterator<JavaSource> iterator = units.iterator(); iterator.hasNext();) {
             JavaSource java = iterator.next();
@@ -463,7 +478,7 @@ public final class SourceModuleImport {
         var text = new StringWriter(); new MavenXpp3Writer().write(text, model); return text.toString();
     }
 
-    private record GeneratedProvider(String name, String type) { }
+    private record GeneratedProvider(String name, String type, boolean directImport, boolean explicitName) { }
 
     private static List<GeneratedProvider> declaredProviders(Map<String, CompilationUnit> units, Set<String> knownTypes) {
         List<GeneratedProvider> providers = new ArrayList<>();
@@ -477,12 +492,17 @@ public final class SourceModuleImport {
             String simpleName = type.getNameAsString();
             String defaultName = simpleName.length() > 1 && Character.isUpperCase(simpleName.charAt(0)) && Character.isUpperCase(simpleName.charAt(1))
                     ? simpleName : Character.toLowerCase(simpleName.charAt(0)) + simpleName.substring(1);
-            for (String name : beanNames(component.get(), defaultName)) providers.add(new GeneratedProvider(name, qualified));
+            boolean directImport = type.isClassOrInterfaceDeclaration()
+                    && type.asClassOrInterfaceDeclaration().isPublic()
+                    && !type.asClassOrInterfaceDeclaration().isInterface()
+                    && !type.asClassOrInterfaceDeclaration().isAbstract()
+                    && !component.get().getName().getIdentifier().equals("Configuration");
+            for (String name : beanNames(component.get(), defaultName)) providers.add(new GeneratedProvider(name, qualified, directImport, !name.isBlank() && beanNames(component.get(), "").contains(name)));
             for (var method : type.getMethods()) {
                 if (method.getAnnotations().stream().anyMatch(a -> (a.getName().getIdentifier().equals("Profile") || a.getName().getIdentifier().startsWith("Conditional")))) continue;
                 var bean = method.getAnnotations().stream().filter(a -> a.getName().getIdentifier().equals("Bean")).findFirst();
                 if (bean.isPresent()) for (String name : beanNames(bean.get(), method.getNameAsString()))
-                    providers.add(new GeneratedProvider(name, resolve(method.getType().asString(), unit, knownTypes)));
+                    providers.add(new GeneratedProvider(name, resolve(method.getType().asString(), unit, knownTypes), false, false));
             }
         }
         return providers;
@@ -510,6 +530,11 @@ public final class SourceModuleImport {
     }
 
     private static List<GeneratedProvider> reviewedProviders(Analysis analysis, Set<String> files, Map<String, String> reviewedJava) {
+        return reviewedProviders(analysis, files, reviewedJava, true);
+    }
+
+    private static List<GeneratedProvider> reviewedProviders(Analysis analysis, Set<String> files,
+                                                            Map<String, String> reviewedJava, boolean requireScannedPackage) {
         var parser = new JavaParser(new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE));
         Set<String> scanned = new HashSet<>();
         for (String encoded : analysis.generatedInputs().values()) {
@@ -540,6 +565,27 @@ public final class SourceModuleImport {
                 }
             }
         }
+        Set<String> explicitlyImported = new HashSet<>();
+        List<String> registrationInputs = new ArrayList<>(analysis.generatedInputs().values());
+        analysis.supportInputs().entrySet().stream().filter(entry -> entry.getKey().endsWith(".java"))
+                .map(Map.Entry::getValue).forEach(registrationInputs::add);
+        for (String encoded : registrationInputs) {
+            var parsed = parser.parse(decode(encoded));
+            if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) continue;
+            var unit = parsed.getResult().get();
+            String pkg = unit.getPackageDeclaration().map(PackageDeclaration::getNameAsString).orElse("");
+            if (scanned.stream().noneMatch(base -> pkg.equals(base) || pkg.startsWith(base + "."))) continue;
+            for (var type : unit.getTypes()) {
+                if (type.getAnnotations().stream().noneMatch(annotation -> Set.of("Component", "Configuration", "Service",
+                        "Repository", "Controller", "RestController", "SpringBootApplication")
+                        .contains(annotation.getName().getIdentifier()))) continue;
+                if (type.getAnnotations().stream().anyMatch(annotation -> annotation.getName().getIdentifier().equals("Profile")
+                        || annotation.getName().getIdentifier().startsWith("Conditional"))) continue;
+                type.getAnnotations().stream().filter(annotation -> annotation.getName().getIdentifier().equals("Import"))
+                        .flatMap(annotation -> annotation.findAll(com.github.javaparser.ast.expr.ClassExpr.class).stream())
+                        .map(literal -> resolve(literal.getType().asString(), unit, Set.of())).forEach(explicitlyImported::add);
+            }
+        }
         Map<String, CompilationUnit> userUnits = new LinkedHashMap<>();
         for (var file : analysis.files()) {
             if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
@@ -551,7 +597,13 @@ public final class SourceModuleImport {
             if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) continue;
             var unit = parsed.getResult().get();
             String pkg = unit.getPackageDeclaration().map(com.github.javaparser.ast.PackageDeclaration::getNameAsString).orElse("");
-            if (scanned.stream().anyMatch(base -> pkg.equals(base) || pkg.startsWith(base + "."))) userUnits.put(file.destination(), unit);
+            if (!requireScannedPackage || scanned.stream().anyMatch(base -> pkg.equals(base) || pkg.startsWith(base + "."))) {
+                userUnits.put(file.destination(), unit);
+            } else {
+                var importedUnit = unit.clone();
+                importedUnit.getTypes().removeIf(type -> !explicitlyImported.contains(pkg + "." + type.getNameAsString()));
+                if (!importedUnit.getTypes().isEmpty()) userUnits.put(file.destination(), importedUnit);
+            }
         }
         Set<String> known = new HashSet<>();
         userUnits.values().forEach(unit -> unit.getTypes().forEach(type -> known.add(
@@ -575,11 +627,19 @@ public final class SourceModuleImport {
     public static List<ReviewAction> reviewActions(Analysis analysis, Set<String> files, Set<String> dependencies,
                                                   Map<String, String> reviewedJava) {
         var userProviders = reviewedProviders(analysis, files, reviewedJava);
+        var availableProviders = reviewedProviders(analysis, files, reviewedJava, false);
+        Set<String> scanWarnings = new HashSet<>();
         List<ReviewAction> actions = new ArrayList<>();
         for (var bean : analysis.beans()) if (!bean.generatedProvider() && !provided(userProviders, bean)) {
             List<String> evidence = new ArrayList<>();
             evidence.add(bean.generatedFile() + ":" + bean.line()); evidence.addAll(bean.sourceDefinitions());
             actions.add(new ReviewAction(ReviewKind.BEAN, bean.name() + " : " + bean.type(), List.copyOf(evidence)));
+            if (provided(availableProviders, bean) && scanWarnings.add(bean.type())) {
+                actions.add(new ReviewAction(ReviewKind.SCAN,
+                        UNSCANNED_PROVIDER + bean.type(),
+                        List.of("Copying this source is not sufficient to register the bean. Add a user-owned @Configuration in a scanned package with @Import for the copied component or its configuration, then rebuild.",
+                                bean.generatedFile() + ":" + bean.line())));
+            }
         }
         Set<String> referencedPaths = new HashSet<>();
         analysis.identity().matchedImplementations().forEach(type -> referencedPaths.add("user/src/main/java/" + type.replace('.', '/') + ".java"));
@@ -613,6 +673,10 @@ public final class SourceModuleImport {
     }
 
     public static String report(Analysis analysis, Set<String> files, Set<String> dependencies) {
+        return report(analysis, files, dependencies, null);
+    }
+
+    private static String report(Analysis analysis, Set<String> files, Set<String> dependencies, SpringRegistration registration) {
         StringBuilder text = new StringBuilder("# Source-assisted module import review\n\n");
         text.append("Original checkout: ").append(analysis.sourceRoot()).append("\n\n");
         text.append("## Module identity\n\nImported module: ").append(analysis.identity().expected())
@@ -646,6 +710,10 @@ public final class SourceModuleImport {
         analysis.properties().forEach(p -> text.append("- ").append(p.source()).append('\n'));
         text.append("\n## Remaining review\n\n");
         analysis.notes().forEach(n -> text.append("- ").append(n).append('\n'));
+        reviewActions(analysis, files, dependencies).stream().filter(action -> action.kind() == ReviewKind.SCAN)
+                .filter(action -> requiresReviewAfterRegistration(registration, action))
+                .forEach(action -> { text.append("- ").append(action.subject()).append('\n');
+                    action.evidence().forEach(item -> text.append("  ").append(item).append('\n')); });
         text.append("- Put new Spring wiring under user/ in a package scanned by the generated Application. Match generated @Resource bean names or provide explicit aliases/qualifiers. Do not blindly scan the original configuration; avoid duplicate beans and circular dependencies.\n")
                 .append("- Verify real configuration prefixes at original factory call sites and Java field types in dependency sources. Properties files are offered separately; their values are not written to this report.\n")
                 .append("- Restore non-properties resources, service-provider registrations and any reflection-only classes manually. Source recommendation is conservative.\n")
@@ -664,6 +732,93 @@ public final class SourceModuleImport {
         };
     }
 
+    public record SpringRegistration(String destination, String javaSource, List<String> components) { }
+
+    private static boolean hasExplicitResourceName(Analysis analysis, BeanRequirement bean) {
+        String generated = analysis.generatedInputs().get(bean.generatedFile());
+        if (generated == null) return false;
+        var parsed = new JavaParser(new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE))
+                .parse(decode(generated));
+        return parsed.getResult().isPresent() && parsed.getResult().get()
+                .findAll(com.github.javaparser.ast.expr.AnnotationExpr.class).stream()
+                .filter(annotation -> annotation.getName().getIdentifier().equals("Resource") && annotation.isNormalAnnotationExpr())
+                .flatMap(annotation -> annotation.asNormalAnnotationExpr().getPairs().stream())
+                .anyMatch(pair -> pair.getNameAsString().equals("name") && pair.getValue().isStringLiteralExpr()
+                        && pair.getValue().asStringLiteralExpr().asString().equals(bean.name()));
+    }
+
+    public static boolean requiresReviewAfterRegistration(SpringRegistration registration, ReviewAction action) {
+        return registration == null || action.kind() != ReviewKind.SCAN
+                || registration.components().stream().noneMatch(type -> action.subject().equals(UNSCANNED_PROVIDER + type));
+    }
+
+    /** A new, explicit registration for selected stereotypes; never invent factories for plain Java classes. */
+    public static SpringRegistration previewSpringRegistration(Analysis analysis, Set<String> files,
+                                                               Map<String, String> reviewedJava) throws IOException {
+        var scanned = reviewedProviders(analysis, files, reviewedJava);
+        var available = reviewedProviders(analysis, files, reviewedJava, false);
+        Set<String> components = new TreeSet<>();
+        for (var bean : analysis.beans()) {
+            if (bean.generatedProvider() || provided(scanned, bean) || !provided(available, bean)) continue;
+            // Distinct bean identities of the same class may represent different configured instances.
+            // Do not collapse them into one imported singleton.
+            if (analysis.beans().stream().filter(required -> !required.generatedProvider() && required.type().equals(bean.type()))
+                    .map(BeanRequirement::name).distinct().count() > 1) continue;
+            if (available.stream().noneMatch(provider -> provider.directImport() && provider.type().equals(bean.type()))) continue;
+            // @Resource(name=...) does not fall back to lookup by type. For an unnamed
+            // stereotype Spring's import name is the fully qualified class name, not its scan default.
+            if (hasExplicitResourceName(analysis, bean) && available.stream().noneMatch(provider ->
+                    provider.directImport() && provider.type().equals(bean.type())
+                            && (provider.explicitName() ? provider.name() : provider.type()).equals(bean.name()))) continue;
+            components.add(bean.type());
+        }
+        if (components.isEmpty()) return null;
+        // The released Studio applications explicitly scan this namespace. Keep the new configuration
+        // under user/ and import only reviewed component classes, rather than scanning the original application.
+        String pkg = "org.ikasan.studio.boot.imported";
+        var parser = new JavaParser(new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE));
+        boolean discovered = false;
+        for (String encoded : analysis.generatedInputs().values()) {
+            var parsed = parser.parse(decode(encoded));
+            if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) continue;
+            var unit = parsed.getResult().get();
+            for (var annotation : unit.findAll(com.github.javaparser.ast.expr.AnnotationExpr.class)) {
+                Set<String> packages = new HashSet<>();
+                if (annotation.getName().getIdentifier().equals("ComponentScan")) {
+                    if (annotation.getParentNode().orElse(null) instanceof com.github.javaparser.ast.body.TypeDeclaration<?> owner
+                            && owner.getAnnotations().stream().anyMatch(value -> value.getName().getIdentifier().equals("Profile")
+                                    || value.getName().getIdentifier().startsWith("Conditional"))) continue;
+                    if (annotation.isNormalAnnotationExpr() && annotation.asNormalAnnotationExpr().getPairs().stream()
+                            .anyMatch(pair -> !Set.of("value", "basePackages").contains(pair.getNameAsString()))) continue;
+                    if (annotation.isSingleMemberAnnotationExpr()) collectLiteralPackages(annotation.asSingleMemberAnnotationExpr().getMemberValue(), packages);
+                    if (annotation.isNormalAnnotationExpr()) annotation.asNormalAnnotationExpr().getPairs().stream()
+                            .filter(pair -> Set.of("value", "basePackages").contains(pair.getNameAsString()))
+                            .forEach(pair -> collectLiteralPackages(pair.getValue(), packages));
+                }
+                if (packages.stream().anyMatch(base -> pkg.equals(base) || pkg.startsWith(base + "."))) discovered = true;
+            }
+        }
+        if (!discovered) return null; // Custom startup/scanning needs explicit developer wiring.
+        Set<String> reserved = new HashSet<>();
+        analysis.files().stream().filter(file -> files.contains(file.source())).map(FileChoice::destination).forEach(reserved::add);
+        String className = null, destination = null;
+        for (int number = 1; number <= 1000; number++) {
+            String candidate = "ImportedSourceComponents" + (number == 1 ? "" : number);
+            String path = "user/src/main/java/" + pkg.replace('.', '/') + "/" + candidate + ".java";
+            if (!reserved.contains(path) && !Files.exists(safe(analysis.destinationRoot(), path), LinkOption.NOFOLLOW_LINKS)) {
+                className = candidate; destination = path; break;
+            }
+        }
+        if (className == null) throw new IOException("No unused Spring registration filename is available.");
+        String text = "package " + pkg + ";\n\n"
+                + "/** User-owned registration for reviewed copied components. Preserved during Studio regeneration. */\n"
+                + "@org.springframework.context.annotation.Configuration\n"
+                + "@org.springframework.context.annotation.Import({\n"
+                + components.stream().map(type -> "        " + type + ".class").collect(java.util.stream.Collectors.joining(",\n"))
+                + "\n})\npublic class " + className + " {\n}\n";
+        return new SpringRegistration(destination, text, List.copyOf(components));
+    }
+
     public static Path apply(Analysis analysis, Set<String> files, Set<String> dependencies, boolean replaceExisting) throws Exception {
         return apply(analysis, files, dependencies, replaceExisting, false);
     }
@@ -676,6 +831,20 @@ public final class SourceModuleImport {
     /** Reviewed Java text is staged separately; original bytes remain the stale-source guard. */
     public static Path apply(Analysis analysis, Set<String> files, Set<String> dependencies, boolean replaceExisting,
                              boolean acceptIdentity, Map<String, String> reviewedJava) throws Exception {
+        return apply(analysis, files, dependencies, replaceExisting, acceptIdentity, reviewedJava, null);
+    }
+
+    public static Path apply(Analysis analysis, Set<String> files, Set<String> dependencies, boolean replaceExisting,
+                             boolean acceptIdentity, Map<String, String> reviewedJava, SpringRegistration registration) throws Exception {
+        if (registration != null && !registration.equals(previewSpringRegistration(analysis, files, reviewedJava)))
+            throw new IOException("Spring registration review changed. Review it again before importing.");
+        if (registration != null) {
+            for (var file : analysis.files()) {
+                if (files.contains(file.source()) || !file.destination().endsWith(".java")) continue;
+                if (!Objects.equals(existing(safe(analysis.destinationRoot(), file.destination())), file.previous()))
+                    throw new IOException("Destination component changed since Spring registration review: " + file.destination());
+            }
+        }
         for (var entry : reviewedJava.entrySet()) {
             if (!files.contains(entry.getKey()) || !entry.getKey().endsWith(".java")
                     || importableFiles(analysis).stream().noneMatch(file -> file.source().equals(entry.getKey())))
@@ -697,7 +866,9 @@ public final class SourceModuleImport {
             if (!Objects.equals(input.getKey().equals(SUPPORT_CUSTOMISATIONS)
                     ? Objects.toString(existing(safe(analysis.destinationRoot(), input.getKey())), "")
                     : existing(safe(analysis.destinationRoot(), input.getKey())), input.getValue()))
-                throw new IOException("Destination model changed since support review. Analyse again.");
+                throw new IOException(input.getKey().endsWith(".java")
+                        ? "Destination Spring wiring changed since review. Analyse again: " + input.getKey()
+                        : "Destination model changed since support review. Analyse again.");
         for (var support : analysis.managedFiles()) {
             if (!Objects.equals(existing(safe(analysis.sourceRoot(), support.source())), support.bytes())
                     || !Objects.equals(existing(safe(analysis.destinationRoot(), support.destination())), support.current()))
@@ -713,6 +884,13 @@ public final class SourceModuleImport {
             if (!Objects.equals(file.previous(), existing(target))) throw new IOException("Destination changed since review: " + file.destination());
             if (file.previous() != null && !file.previous().equals(output) && !replaceExisting) throw new IOException("Approve replacement before importing " + file.destination());
             originals.put(target, file.previous());
+        }
+        if (registration != null) {
+            Path target = safe(analysis.destinationRoot(), registration.destination());
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) || writes.containsKey(target))
+                throw new IOException("Spring registration destination changed. Review it again before importing.");
+            originals.put(target, null);
+            writes.put(target, encode(registration.javaSource().getBytes(StandardCharsets.UTF_8)));
         }
         var customSupport = analysis.managedFiles().stream().filter(file -> files.contains(file.source())
                 && !Objects.equals(writes.get(analysis.destinationRoot().resolve(file.destination())), file.current())).toList();
@@ -733,9 +911,11 @@ public final class SourceModuleImport {
             originals.put(target, analysis.originalPom()); writes.put(target, encode(pomAfter(analysis, dependencies).getBytes(StandardCharsets.UTF_8)));
         }
         Path report = safe(analysis.destinationRoot(), "user/import-reviews/" + UUID.randomUUID() + ".md");
-        originals.put(report, null); writes.put(report, encode((report(analysis, files, dependencies)
+        originals.put(report, null); writes.put(report, encode((report(analysis, files, dependencies, registration)
                 + (analysis.identity().requiresApproval() && acceptIdentity ? "\nDeveloper explicitly approved the mismatched/unverified checkout identity.\n" : "")
-                + (reviewedJava.isEmpty() ? "" : "\nStaged Java merges applied: " + new TreeSet<>(reviewedJava.keySet()) + "\n"))
+                + (reviewedJava.isEmpty() ? "" : "\nStaged Java merges applied: " + new TreeSet<>(reviewedJava.keySet()) + "\n")
+                + (registration == null ? "" : "\n## Reviewed Spring registration\n\nCreated " + registration.destination()
+                        + "\nRegistered components: " + registration.components() + "\n"))
                 .getBytes(StandardCharsets.UTF_8)));
         List<Path> applied = new ArrayList<>();
         try {

@@ -9,6 +9,7 @@ import java.nio.file.*;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class SourceModuleImportTest {
     @TempDir Path temporary;
@@ -148,8 +149,166 @@ class SourceModuleImportTest {
                 @org.springframework.boot.autoconfigure.SpringBootApplication
                 @org.springframework.context.annotation.ComponentScan("org.different") class Application {}
                 """);
-        assertThat(SourceModuleImport.reviewActions(analyse(), Set.of(selected), Set.of())).anyMatch(action ->
+        var unscanned = analyse();
+        assertThat(SourceModuleImport.reviewActions(unscanned, Set.of(selected), Set.of())).anyMatch(action ->
                 action.kind() == SourceModuleImport.ReviewKind.BEAN && action.subject().startsWith("renamedBean :"));
+        assertThat(SourceModuleImport.reviewActions(unscanned, Set.of(selected), Set.of())).anyMatch(action ->
+                action.kind() == SourceModuleImport.ReviewKind.SCAN && action.subject().contains("outside destination component scanning")
+                        && action.subject().contains("org.customer.Bespoke"));
+        assertThat(SourceModuleImport.report(unscanned, Set.of(selected), Set.of()))
+                .contains("outside destination component scanning", "user-owned @Configuration");
+        assertThat(SourceModuleImport.reviewActions(unscanned, Set.of(selected), Set.of(),
+                Map.of(selected, "package org.customer; class Bespoke {}"))).noneMatch(action ->
+                action.kind() == SourceModuleImport.ReviewKind.SCAN && action.subject().contains("outside destination component scanning"));
+    }
+
+    private void registrationFixture() throws Exception {
+        fixture();
+        write(target(), "generated/src/main/java/studio/Application.java", """
+                package studio;
+                @org.springframework.context.annotation.ComponentScan({"org.ikasan.studio.boot", "org.destination"})
+                class Application {}
+                """);
+        write(source(), "src/main/java/org/customer/Bespoke.java",
+                "package org.customer; @org.springframework.stereotype.Component public class Bespoke {}");
+    }
+
+    @Test void reviewedRegistrationIsCreatedWithTheCopiesAndResolvesFurtherReview() throws Exception {
+        registrationFixture();
+        var analysis = analyse();
+        var files = Set.of("src/main/java/org/customer/Bespoke.java");
+        var registration = SourceModuleImport.previewSpringRegistration(analysis, files, Map.of());
+        assertThat(registration).isNotNull();
+        assertThat(registration.components()).containsExactly("org.customer.Bespoke");
+        assertThat(registration.javaSource()).contains("@org.springframework.context.annotation.Import", "org.customer.Bespoke.class")
+                .doesNotContain("org.customer.Other.class", "OriginalConfig.class");
+        assertThat(Files.exists(target().resolve(registration.destination()))).isFalse();
+        Path report = SourceModuleImport.apply(analysis, files, Set.of(), false, false, Map.of(), registration);
+        assertThat(Files.readString(target().resolve(registration.destination()))).isEqualTo(registration.javaSource());
+        assertThat(Files.readString(report)).contains("Reviewed Spring registration", registration.destination())
+                .doesNotContain("Copied Spring provider is outside destination component scanning: org.customer.Bespoke");
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), Set.of(), Map.of())).isNull();
+    }
+
+    @Test void sourceCopyWithoutRegistrationApprovalDoesNotCreateWiring() throws Exception {
+        registrationFixture();
+        var analysis = analyse();
+        var files = Set.of("src/main/java/org/customer/Bespoke.java");
+        var registration = SourceModuleImport.previewSpringRegistration(analysis, files, Map.of());
+        assertNotNull(registration, "Expected a Spring registration preview for Bespoke");
+        SourceModuleImport.apply(analysis, files, Set.of(), false);
+        assertThat(Files.exists(target().resolve(registration.destination()))).isFalse();
+    }
+
+    @Test void registrationNeverOverwritesExistingUserFilesAndRejectsStaleOrForgedPlans() throws Exception {
+        registrationFixture();
+        String originalWiring = "user/src/main/java/org/ikasan/studio/boot/imported/ImportedSourceComponents.java";
+        write(target(), originalWiring, "// Existing developer implementation\n");
+        var analysis = analyse();
+        var files = Set.of("src/main/java/org/customer/Bespoke.java");
+        var registration = SourceModuleImport.previewSpringRegistration(analysis, files, Map.of());
+        assertNotNull(registration, "Expected a Spring registration preview for Bespoke");
+        assertThat(registration.destination()).endsWith("ImportedSourceComponents2.java");
+        assertThat(registration.javaSource()).contains("class ImportedSourceComponents2");
+        var forged = new SourceModuleImport.SpringRegistration(registration.destination(), "arbitrary content", registration.components());
+        assertThatThrownBy(() -> SourceModuleImport.apply(analysis, files, Set.of(), false, false, Map.of(), forged))
+                .hasMessageContaining("registration review changed");
+        write(target(), registration.destination(), "// Created while review was open\n");
+        assertThatThrownBy(() -> SourceModuleImport.apply(analysis, files, Set.of(), false, false, Map.of(), registration))
+                .hasMessageContaining("registration review changed");
+        assertThat(Files.readString(target().resolve(originalWiring))).isEqualTo("// Existing developer implementation\n");
+        assertThat(Files.readString(target().resolve(registration.destination()))).isEqualTo("// Created while review was open\n");
+        assertThat(Files.exists(target().resolve("user/src/main/java/org/customer/Bespoke.java"))).isFalse();
+    }
+
+    @Test void registrationDoesNotInventExplicitAliasesOrAssumeCustomScanFilters() throws Exception {
+        registrationFixture();
+        write(target(), "generated/src/main/java/studio/ComponentFactory.java", """
+                package studio;
+                class ComponentFactory { @javax.annotation.Resource(name="wanted") org.customer.Bespoke component; }
+                """);
+        write(source(), "src/main/java/org/customer/Bespoke.java",
+                "package org.customer; @org.springframework.stereotype.Component(\"different\") public class Bespoke {}");
+        var files = Set.of("src/main/java/org/customer/Bespoke.java");
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNull();
+        write(source(), "src/main/java/org/customer/Bespoke.java",
+                "package org.customer; @org.springframework.stereotype.Component(\"wanted\") public class Bespoke {}");
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNotNull();
+        write(target(), "generated/src/main/java/studio/Application.java", """
+                package studio;
+                @org.springframework.context.annotation.ComponentScan(basePackages="org.ikasan.studio.boot", useDefaultFilters=false)
+                class Application {}
+                """);
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNull();
+    }
+
+    @Test void registrationDoesNotCollapseDifferentBeanIdentitiesIntoOneComponent() throws Exception {
+        registrationFixture();
+        write(target(), "generated/src/main/java/studio/ComponentFactory.java", """
+                package studio;
+                class ComponentFactory {
+                    @javax.annotation.Resource org.customer.Bespoke first;
+                    @javax.annotation.Resource(name="second") org.customer.Bespoke second;
+                }
+                """);
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(),
+                Set.of("src/main/java/org/customer/Bespoke.java"), Map.of())).isNull();
+    }
+
+    @Test void registrationDoesNotConfuseScanDefaultNamesWithExplicitResourceNames() throws Exception {
+        registrationFixture();
+        var files = Set.of("src/main/java/org/customer/Bespoke.java");
+        write(target(), "generated/src/main/java/studio/ComponentFactory.java", """
+                package studio;
+                class ComponentFactory { @javax.annotation.Resource(name="bespoke") org.customer.Bespoke component; }
+                """);
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNull();
+        write(target(), "generated/src/main/java/studio/ComponentFactory.java", """
+                package studio;
+                class ComponentFactory { @javax.annotation.Resource(name="org.customer.Bespoke") org.customer.Bespoke component; }
+                """);
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNotNull();
+    }
+
+    @Test void registrationDoesNotInventBeansForPlainOrNonPublicClasses() throws Exception {
+        registrationFixture();
+        var files = Set.of("src/main/java/org/customer/Bespoke.java");
+        write(source(), "src/main/java/org/customer/Bespoke.java", "package org.customer; public class Bespoke {}");
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNull();
+        write(source(), "src/main/java/org/customer/Bespoke.java", "package org.customer; @org.springframework.stereotype.Component class Bespoke {}");
+        assertThat(SourceModuleImport.previewSpringRegistration(analyse(), files, Map.of())).isNull();
+    }
+
+    @Test void explicitUserImportsResolveTheScanWarningAndAreProtectedAgainstStaleReview() throws Exception {
+        fixture();
+        write(target(), "generated/src/main/java/studio/Application.java", """
+                package studio;
+                @org.springframework.context.annotation.ComponentScan("org.different") class Application {}
+                """);
+        write(source(), "src/main/java/org/customer/Bespoke.java",
+                "package org.customer; @org.springframework.stereotype.Component public class Bespoke {}");
+        String wiring = "user/src/main/java/org/different/ImportedComponents.java";
+        write(target(), wiring, """
+                package org.different;
+                @org.springframework.context.annotation.Configuration
+                @org.springframework.context.annotation.Import(org.customer.Bespoke.class)
+                public class ImportedComponents {}
+                """);
+        var analysis = analyse();
+        String selected = "src/main/java/org/customer/Bespoke.java";
+        assertThat(SourceModuleImport.reviewActions(analysis, Set.of(selected), Set.of()))
+                .noneMatch(action -> action.kind() == SourceModuleImport.ReviewKind.BEAN && action.subject().startsWith("renamedBean :"))
+                .noneMatch(action -> action.kind() == SourceModuleImport.ReviewKind.SCAN && action.subject().contains("org.customer.Bespoke"));
+        write(target(), wiring, "package org.different; public class ImportedComponents {}");
+        assertThatThrownBy(() -> SourceModuleImport.apply(analysis, Set.of(selected), Set.of(), false))
+                .hasMessageContaining("Spring wiring changed since review");
+        write(target(), wiring, """
+                package org.different;
+                @org.springframework.context.annotation.Import(org.customer.Bespoke.class)
+                public class ImportedComponents {}
+                """);
+        assertThat(SourceModuleImport.reviewActions(analyse(), Set.of(selected), Set.of())).anyMatch(action ->
+                action.kind() == SourceModuleImport.ReviewKind.SCAN && action.subject().contains("org.customer.Bespoke"));
     }
 
     @Test void unchangedReferencedImplementationsAndSuppliedSupportHaveNoLiveReviewItems() throws Exception {

@@ -140,6 +140,20 @@ aliases/qualifiers. Avoid scanning unrelated original configuration or creating 
 bean dependencies. The importer does not rewrite arbitrary Spring factories or invent
 constructor arguments, configuration IDs, business values or placeholder defaults.
 
+A copied Spring provider outside the destination scan is an actionable scan issue,
+not a confirmation-only wiring reminder. Register it explicitly, for example using
+`@Configuration` and `@Import(TheCopiedComponent.class)` in a new user-owned class
+under `org.ikasan.studio.boot.imported`, which the generated Application already scans.
+For public, concrete copied Spring components, **Review Spring registration…** offers
+a new user-owned configuration with only those explicit imports. Review the Java,
+choose **Create with import**, then **Perform Actions** to create it together with
+the selected source files. **Revert Spring registration** removes that staged choice.
+Existing user files are never overwritten; filename collisions select a fresh name.
+Plain classes, inaccessible/abstract types, custom factory wiring, and multiple bean identities for one class require manual review. Explicit resource names must match the imported component name.
+The review recognises literal imports from existing scanned user configurations and
+requires reanalysis if that reviewed wiring changes. This keeps copied packages intact
+without scanning unrelated original application configuration.
+
 After transferring selected files, **Continue to configuration import** offers the discovered
 `application.properties`, profile-specific files and other properties in resources or
 `config/`. Choose a discovered file, choose **Use Selected Discovered File**, adapt its settings for
