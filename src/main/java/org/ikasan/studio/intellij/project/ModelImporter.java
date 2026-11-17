@@ -98,7 +98,7 @@ public final class ModelImporter {
         try {
             if (report != null) report.stage(org.ikasan.studio.core.diagnostics.RuntimeImportReport.Stage.GENERATION);
             generation = StudioProjectFiles.refreshCodeFromModel(project,
-                    org.ikasan.studio.core.generation.GenerationRequest.full());
+                    org.ikasan.studio.core.generation.GenerationRequest.full(), false);
         } catch (RuntimeException failure) {
             uiContext.setIkasanModule(previousModule);
             uiContext.getOptions().setPackageName(previousPackage);
@@ -127,6 +127,16 @@ public final class ModelImporter {
                         LOG.warn("STUDIO: Could not configure the imported model's JDK", settingsFailure);
                         StudioUIUtils.displayIdeaWarnMessage(project,
                                 StudioBundle.message("message.ImportModelJdkNotConfigured", requiredJava));
+                    }
+                    // Generation has committed and importer/runner JDK settings are now stable.
+                    // Always refresh: an unchanged POM can still have a stale IDE compiler model.
+                    try {
+                        org.jetbrains.idea.maven.project.MavenProjectsManager.getInstance(project)
+                                .forceUpdateAllProjectsOrFindAllAvailablePomFiles();
+                    } catch (RuntimeException refreshFailure) {
+                        LOG.warn("STUDIO: Could not refresh Maven after model import", refreshFailure);
+                        StudioUIUtils.displayIdeaWarnMessage(project,
+                                StudioBundle.message("message.ImportModelMavenRefreshFailed"));
                     }
                     StudioUIUtils.displayIdeaInfoMessage(project, StudioBundle.message("message.ImportModelSuccess",
                             version, requiredJava > 0 ? String.valueOf(requiredJava) : StudioBundle.message("label.Unknown")));

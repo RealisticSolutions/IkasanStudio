@@ -419,9 +419,16 @@ public class StudioProjectFiles {
     }
 
     public static CompletableFuture<Void> refreshCodeFromModel(Project project, GenerationRequest generationRequest) {
+        return refreshCodeFromModel(project, generationRequest, true);
+    }
+
+    public static CompletableFuture<Void> refreshCodeFromModel(Project project, GenerationRequest generationRequest,
+                                                               boolean reloadMavenAfterGeneration) {
         GeneratedProjectSynchronizer pipsiIkasanModel = project.getService(UiContext.class).getPipsiIkasanModel();
         pipsiIkasanModel.saveModelJsonToDisk();
-        return pipsiIkasanModel.asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(generationRequest);
+        return reloadMavenAfterGeneration
+                ? pipsiIkasanModel.asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(generationRequest)
+                : pipsiIkasanModel.asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(generationRequest, false);
     }
 
     public static void refreshCodeFromModelAndCauseRedraw(Project project, GenerationRequest generationRequest) {

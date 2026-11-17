@@ -80,3 +80,10 @@ conflict from a temporary 404, a slow startup or an unrelated connector error. O
 examined in a bounded in-memory window; raw application output and credentials are not
 copied into notifications or plugin logs. Launches started before this observer was attached
 must be relaunched for output-based detection.
+
+If an imported project reports `method references are not supported in -source 7`
+while its root POM specifies Java 11 or later, IntelliJ may still hold an older
+Maven compiler model. Use **Reload All Maven Projects**, wait for import/indexing
+to finish, then build again. Studio imports request Maven refresh after code
+generation and JDK alignment; a failed Maven-server request can still require
+this manual retry. Preserve the Java level required by the selected Ikasan pack.

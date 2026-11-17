@@ -65,6 +65,12 @@ public class GeneratedProjectSynchronizer {
      * An update has been made to the diagram, so we need to reflect this into the code.
      */
     public CompletableFuture<Void> asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(GenerationRequest request) {
+        return asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(request, true);
+    }
+
+    /** Imports defer Maven refresh until their JDK alignment has completed. */
+    public CompletableFuture<Void> asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(
+            GenerationRequest request, boolean reloadMavenAfterGeneration) {
         CompletableFuture<Void> completion = new CompletableFuture<>();
         if (request.scope() == GenerationRequest.Scope.MODEL_ONLY) {
             completion.complete(null);
@@ -184,7 +190,7 @@ public class GeneratedProjectSynchronizer {
                                 + summary.updated() + " updated, " + summary.unchanged() + " unchanged";
                         LOG.info(StudioDiagnosticEvent.format(StudioDiagnosticEvent.Event.GENERATION_COMPLETED, null, uiContext.getIkasanModule().getIdentity(), null, null));
                         StatusBar.Info.set(summaryMessage, project);
-                        if (pomNeedsUpdate.get()) {
+                        if (pomNeedsUpdate.get() && reloadMavenAfterGeneration) {
                             MavenProjectsManager manager = MavenProjectsManager.getInstance(project);
                             if (manager != null) manager.forceUpdateAllProjectsOrFindAllAvailablePomFiles();
                         }

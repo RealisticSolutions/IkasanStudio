@@ -5,6 +5,8 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Finish imported-model generation and JDK alignment before requesting Maven reimport. Refresh even when the POM is unchanged so stale module language/bytecode levels do not leave copied Java 8+ source compiling as Java 7.
+
 - Offer Reload Maven project directly on the Studio waiting screen. Request a full Maven workspace reimport rather than only repeating the readiness check, and distinguish these actions in startup guidance.
 
 - Recover Studio initialization after missed Maven roots events with disposed-aware readiness rechecks. Match imported generated-module roots by filesystem path, support split source/test roots, expose root diagnostics while waiting, and make readiness-check failures recoverable.
