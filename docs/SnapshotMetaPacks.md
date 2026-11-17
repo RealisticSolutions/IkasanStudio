@@ -31,7 +31,7 @@ and updates to the bundled snapshot take effect after restarting the IDE.
    IDE configuration across restarts; a new or deliberately cleared sandbox needs
    its own opt-in.
 3. Configure the application project SDK, Maven importer/runner and Application
-   Run/Debug JRE to **JDK 26**. Keep IntelliJ itself on its supplied JetBrains Runtime.
+   Run/Debug JRE to **JDK 25**. Keep IntelliJ itself on its supplied JetBrains Runtime.
 4. Open an existing V5 demonstration module or select **V5.0.1-SNAPSHOT** when
    configuring a new module. Let Maven finish importing before running tests.
 5. Run the module and demonstrate first delivery, idle readiness and later delivery
@@ -50,3 +50,8 @@ rollback or production readiness. Supported migration choices remain V3/V4.
 pack remains available for existing projects and explicit snapshot testing; it is not silently
 upgraded to 5.1.0. See the [released pack](../headless/studio-pack-v5-release/README.md) and
 [independent authoring example](../ikasan-studio-ancillary/ikasan5-metapack/README.md).
+
+The snapshot pack now generates Java 25 compiler settings. Dated Java 26 results remain
+historical evidence. Older cached snapshot dependencies containing Java 26 bytecode
+need updating or rebuilding before use with JDK 25; changing the POM does not rewrite
+dependency bytecode.

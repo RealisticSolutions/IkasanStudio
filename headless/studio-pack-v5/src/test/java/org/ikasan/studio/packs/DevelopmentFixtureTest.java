@@ -14,7 +14,7 @@ import java.io.StringReader;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Rendering is portable; Maven compilation is a separate, explicit Java 26 development gate. */
+/** Rendering is portable; Maven compilation is a separate, explicit Java 25 development gate. */
 class DevelopmentFixtureTest {
     static final String PACK = "V5.0.1-SNAPSHOT";
     @TempDir Path temporary;
@@ -41,7 +41,7 @@ class DevelopmentFixtureTest {
 
     static Map<String, String> render(Module module) throws Exception {
         var manifest = ComponentLibrary.getMetaPackManifest(PACK);
-        assertEquals("26", manifest.javaVersion());
+        assertEquals("25", manifest.javaVersion());
         assertEquals(2, manifest.compatibilityOverrides().size());
         assertTrue(manifest.compatibilityOverrides().stream().allMatch(override ->
                 "org.apache.activemq".equals(override.groupId()) && "6.3.3".equals(override.version())),

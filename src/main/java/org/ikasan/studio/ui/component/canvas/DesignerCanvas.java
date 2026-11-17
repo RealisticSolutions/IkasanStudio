@@ -1803,7 +1803,7 @@ public class DesignerCanvas extends JPanel implements com.intellij.openapi.actio
             elements.addAll(original.producers());
             for (var element : elements) {
                 var configuration = org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effective(project, element)
-                        ? org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.localFtp() : original.configuration();
+                        ? org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.localFtp(project) : original.configuration();
                 var link = links.stream().filter(l -> l.configuration().sameAddressAs(configuration)).findFirst().orElse(null);
                 if (link == null) {
                     link = new TestFtpServerLinks.Link(configuration, new java.util.ArrayList<>(), new java.util.ArrayList<>());

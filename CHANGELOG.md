@@ -5,6 +5,12 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Allocate an independent loopback FTP port per project for harness overrides. Inject the owned endpoint into Run/Debug, display the actual endpoint on the canvas and in server details, and keep data directories and stop/restart lifecycles isolated across projects. Preserve explicitly configured FTP server ports when overrides are disabled.
+
+- Align the retained V5.0.1-SNAPSHOT pack's generated Maven compiler settings and the V5 sample POMs with Java 25 LTS. Update current SDK/verification guidance and regression expectations; preserve dated Java 26 evidence as historical.
+
+- Recognise the concrete library DevNull runtime class as Dev Null Producer during import across V3, V4 and both V5 packs. Preserve builder construction and avoid unnecessary user-class/Spring-bean requirements. Advance the released V5.1.0 pack to revision 1.0.7.
+
 - Clarify that selecting harness overrides requires starting the local services before Run/Debug. Identify the project-owned FTP endpoint in launch failures and give override-aware port-conflict guidance instead of suggesting a component port change that overrides would ignore.
 
 - Locate running modules from arbitrary page URLs using bounded, cancellable parent-path metadata discovery on the same server. Ignore page queries/fragments, reuse and remember the discovered root, and distinguish the first-request preview from the resolved application URL.

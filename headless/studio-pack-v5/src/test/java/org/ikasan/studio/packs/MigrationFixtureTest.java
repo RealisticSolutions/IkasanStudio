@@ -62,10 +62,10 @@ class MigrationFixtureTest {
             var plan = ModelMigration.analyseWithRules(original, rules(version));
             assertTrue(plan.canApply(), plan.report());
             assertEquals(original, plan.sourceJson());
-            assertTrue(plan.report().contains("Java build baseline to 26"));
+            assertTrue(plan.report().contains("Java build baseline to 25"));
             var module = ComponentIO.validatePersistedModuleJson(plan.targetJson(), "V5 migration rehearsal", false);
             var files = DevelopmentFixtureTest.render(module);
-            files.compute("pom.xml", (key, value) -> value.replace("<artifactId>ikasan5-review</artifactId>",
+            files.compute("pom.xml", (key, value) -> Objects.requireNonNull(value, "Missing generated file: " + key).replace("<artifactId>ikasan5-review</artifactId>",
                     "<artifactId>migration-" + version.toLowerCase(Locale.ROOT) + "</artifactId>"));
             files.put("migration-source.json", original);
             files.put("migration-target.json", plan.targetJson());
@@ -106,8 +106,11 @@ class MigrationFixtureTest {
             assertEquals("javax.mail.Message", component.path("toType").asText());
             assertEquals("ConvertMessage", component.path("userImplementedClassName").asText());
             assertTrue(plan.report().contains("user-implemented class is preserved"));
-            String imports = "import javax.jms.Message;\nimport javax.mail.Session;\n"
-                    + "// javax.jms.Message is documentation\n";
+            String imports = """
+                    import javax.jms.Message;
+                    import javax.mail.Session;
+                    // javax.jms.Message is documentation
+                    """;
             String rewritten = UserImportMigration.rewrite(imports, rules.userImportPrefixes());
             assertTrue(rewritten.contains("import javax.mail.Session;"));
             assertTrue(rewritten.contains("// javax.jms.Message is documentation"));

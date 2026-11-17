@@ -106,6 +106,13 @@ class HarnessOverridesRuntimeTest {
             assertEquals("127.0.0.1", value(ftp, "host")); assertEquals(2121, value(ftp, "port"));
             assertEquals("/component-flow.ftp", value(ftp, "directory")); assertNull(value(ftp, "factory"));
             assertTrue(endpointClass.getField("id").get(ftp).toString().startsWith("studio-harness-launch-one-"));
+            // Launch-injected values replace the legacy generated default for both directions.
+            settings.put("studio.harness.ftp.port", "49123");
+            for (boolean consumer : new boolean[]{true, false}) {
+                Object allocated = endpointClass.getConstructor().newInstance();
+                apply.invoke(null, properties, allocated, "flow.ftp", "FTP", consumer);
+                assertEquals(49123, value(allocated, "port"));
+            }
             Object mail = endpointClass.getConstructor().newInstance();
             apply.invoke(null, properties, mail, "flow.mail", "Email", false);
             assertEquals(1025, value(mail, "port")); assertEquals("smtp", value(mail, "protocol"));

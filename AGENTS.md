@@ -120,7 +120,7 @@ The root [settings.gradle.kts](settings.gradle.kts) includes `headless/` as a co
 Meta-pack sources live under `src/main/resources/studio/metapack/`. The bundled packs are `V3.3.9`, `V4.1.6` and `V5.1.0` (the latter under `headless/studio-pack-v5-release/src/main/resources/`); each supplies `metapack.json`, a component library (JSON descriptors and icons), and version-specific FreeMarker templates. Shared schemas live under `schema/`. Historic VHS and older-version references do not identify currently bundled packs.
 
 An opt-in Ikasan 5 development pack lives in `headless/studio-pack-v5/src/main/resources/studio/metapack/V5.0.1-SNAPSHOT`.
-It targets the inspected Java 26 snapshot baseline and appears in the IDE version selector when **Allow snapshot meta-packs** is enabled in Studio settings. Migration choices remain V3/V4 only.
+Its generated projects target Java 25 LTS and it appears in the IDE version selector when **Allow snapshot meta-packs** is enabled in Studio settings. Migration choices remain V3/V4 only.
 See [V5 development evidence and gates](headless/studio-pack-v5/README.md) before changing its status;
 the plugin embeds it as optional resource-only data and activates it after opt-in and IDE restart. Normal plugin/CLI classpaths contain the released V3/V4/V5 packs; previously activated resources remain available for existing projects after opt-out. See [snapshot meta-packs](docs/SnapshotMetaPacks.md). This is not Marketplace release certification.
 

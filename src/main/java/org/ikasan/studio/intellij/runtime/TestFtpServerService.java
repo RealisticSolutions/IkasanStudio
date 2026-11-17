@@ -28,11 +28,41 @@ public final class TestFtpServerService implements Disposable {
     private FtpServer server;
     private TestFtpServerConfiguration configuration;
     private Path rootDirectory;
+    private boolean localHarness;
     private volatile boolean disposed;
 
     public TestFtpServerService(Project project) { this.project = project; }
 
     public synchronized Path start(TestFtpServerConfiguration requested) throws Exception {
+        return start(requested, false);
+    }
+
+    /** Bind port zero directly so the OS reserves a free port without a probe/close/rebind race. */
+    public synchronized Path startLocal() throws Exception {
+        if (disposed || project.isDisposed()) throw new IllegalStateException("Project is disposed");
+        if (isRunning() && !localHarness)
+            throw new IllegalStateException(org.ikasan.studio.ui.StudioBundle.message("harnessOverrides.stopConfiguredFtp"));
+        if (isRunning()) return rootDirectory;
+        return start(new TestFtpServerConfiguration("127.0.0.1", 0, "ikasan", "ikasan"), true);
+    }
+
+    /** Port zero means unallocated; it is never used for a module launch. Safe for canvas reads. */
+    public synchronized TestFtpServerConfiguration localConfiguration() {
+        return isRunning() && localHarness ? configuration
+                : new TestFtpServerConfiguration("127.0.0.1", 0, "ikasan", "ikasan");
+    }
+
+    public synchronized java.util.Map<String, String> launchProperties() {
+        if (!isRunning() || !localHarness)
+            throw new IllegalStateException(org.ikasan.studio.ui.StudioBundle.message("harnessOverrides.startFtp"));
+        return java.util.Map.of("studio.harness.ftp.host", configuration.host(),
+                "studio.harness.ftp.port", Integer.toString(configuration.port()),
+                "studio.harness.ftp.username", configuration.username(),
+                "studio.harness.ftp.password", configuration.password(),
+                "studio.harness.ftp.home", rootDirectory.toString());
+    }
+
+    private Path start(TestFtpServerConfiguration requested, boolean local) throws Exception {
         if (disposed || project.isDisposed()) throw new IllegalStateException("Project is disposed");
         if (!isLocalHost(requested.host())) throw new IllegalArgumentException("remoteHost must be local");
         if (isRunning()) {
@@ -41,7 +71,7 @@ public final class TestFtpServerService implements Disposable {
             if (requested.sameAddressAs(configuration)) return rootDirectory;
             throw new IllegalStateException("A Studio test FTP server is already running at " + configuration.address());
         }
-        assertPortAvailable(requested);
+        if (!local) assertPortAvailable(requested);
         rootDirectory = testRoot(project);
         Files.createDirectories(rootDirectory);
         Path welcomeFile = rootDirectory.resolve("test-file.txt");
@@ -66,7 +96,9 @@ public final class TestFtpServerService implements Disposable {
             throw failure;
         }
         server = candidate;
-        configuration = requested;
+        configuration = new TestFtpServerConfiguration(requested.host(), factory.getListener("default").getPort(),
+                requested.username(), requested.password());
+        localHarness = local;
         repaintCanvas();
         return rootDirectory;
     }
@@ -92,6 +124,7 @@ public final class TestFtpServerService implements Disposable {
         if (server != null) server.stop();
         server = null;
         configuration = null;
+        localHarness = false;
         repaintCanvas();
     }
     private void repaintCanvas() {
@@ -132,6 +165,7 @@ public final class TestFtpServerService implements Disposable {
             running = server;
             server = null;
             configuration = null;
+            localHarness = false;
         }
         if (running != null) {
             var application = ApplicationManager.getApplication();

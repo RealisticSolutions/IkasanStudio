@@ -44,7 +44,7 @@ class ReactorFixtureTest {
             else if (path.startsWith("src/test/")) files.put("user-flow-tests/" + path, file.getValue());
             else if (path.startsWith("generated/")) files.put(path, file.getValue());
         }
-        assertEquals("26", rootPom.getProperty("maven.compiler.source"));
+        assertEquals("25", rootPom.getProperty("maven.compiler.source"));
         assertTrue(files.get("user-flow-tests/pom.xml").contains("<artifactId>generated</artifactId>"));
         assertTrue(files.containsKey("user/src/main/java/org/example/transport/transport/TransportConverter.java"));
         assertFalse(files.containsKey("generated/src/main/java/org/example/transport/transport/TransportConverter.java"));

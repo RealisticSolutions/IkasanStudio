@@ -9,7 +9,7 @@ import java.nio.file.*;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exports real, isolated transport scenarios. Maven/JDK 26 executes them separately. */
+/** Exports real, isolated transport scenarios. Maven/JDK 25 executes them separately. */
 class RuntimeTransportFixtureTest {
     @TempDir Path temporary;
     @Test void exportsLocalTransportScenarios() throws Exception {
@@ -159,10 +159,13 @@ class RuntimeTransportFixtureTest {
                     org.junit.Assert.assertEquals(java.util.Set.of("review-one@example.test", "review-two@example.test"), recipients);
                 }
                 """;
-        String config = jms ? "private JmsFlowTestSupport client;\nprivate org.apache.activemq.broker.BrokerService broker;\n"
-                + "@Override protected void prepareFixtures(org.springframework.context.ConfigurableApplicationContext context) throws Exception { broker = new org.apache.activemq.broker.BrokerService(); broker.setBrokerName(\"v5-probe\"); broker.setPersistent(false); broker.setUseJmx(false); broker.setUseShutdownHook(false); broker.start(); client = JmsFlowTestSupport.from(context); }\n"
-                + "@Override protected void cleanupFixtures(org.springframework.context.ConfigurableApplicationContext context) throws Exception { try { if (client != null) client.close(); } finally { if (broker != null) { broker.stop(); broker.waitUntilStopped(); } } }\n"
-                + "@Override protected Class<?>[] testConfigurationClasses() { return new Class<?>[]{org.ikasan.studio.flowtests.support.ModuleJmsTestConfig.class}; }" : "";
+        String config = jms ? """
+                private JmsFlowTestSupport client;
+                private org.apache.activemq.broker.BrokerService broker;
+                @Override protected void prepareFixtures(org.springframework.context.ConfigurableApplicationContext context) throws Exception { broker = new org.apache.activemq.broker.BrokerService(); broker.setBrokerName("v5-probe"); broker.setPersistent(false); broker.setUseJmx(false); broker.setUseShutdownHook(false); broker.start(); client = JmsFlowTestSupport.from(context); }
+                @Override protected void cleanupFixtures(org.springframework.context.ConfigurableApplicationContext context) throws Exception { try { if (client != null) client.close(); } finally { if (broker != null) { broker.stop(); broker.waitUntilStopped(); } } }
+                @Override protected Class<?>[] testConfigurationClasses() { return new Class<?>[]{org.ikasan.studio.flowtests.support.ModuleJmsTestConfig.class}; }\
+                """ : "";
         if (!jms) {
             String serverType = smtp ? "LocalSmtpTestServer" : protocol.equals("sftp") ? "LocalSftpTestServer" : "LocalFtpTestServer";
             String bean = "studio" + serverType;
@@ -198,7 +201,7 @@ class RuntimeTransportFixtureTest {
         for (String value : List.of("first", "later", "third")) files.put("src/test/resources/input/" + value + ".txt", value);
         String settings = jms ? "test.jms.broker-url=vm://v5-probe?create=false\n"
                 : "test." + (smtp ? "smtp" : protocol) + ".enabled=true\n";
-        files.compute("src/test/resources/module-test.properties", (key, value) -> value.replaceAll("(?m)^test\\.(smtp|ftp|sftp)\\.enabled=.*\\R?", "") + "\n" + settings);
+        files.compute("src/test/resources/module-test.properties", (key, value) -> Objects.requireNonNull(value, "Missing generated file: " + key).replaceAll("(?m)^test\\.(smtp|ftp|sftp)\\.enabled=.*\\R?", "") + "\n" + settings);
         if (generatedEmail) {
             String prefix = "transport.output.email.producer.";
             files.compute("src/test/resources/module-test.properties", (key, value) -> value
@@ -210,6 +213,7 @@ class RuntimeTransportFixtureTest {
         }
         if (configuredEmail) {
             files.compute("src/test/java/org/ikasan/studio/flowtests/TransportTest.java", (key, value) -> {
+                Objects.requireNonNull(value, "Missing generated file: " + key);
                 for (String inputValue : List.of("first", "later", "third")) {
                     value = value.replace("Map.of(\"Output\", List.of(\"" + inputValue + "\"))",
                             "Map.of(\"Output\", List.of(\"env-review/v5:tail:" + inputValue.repeat(2) + "\"))");

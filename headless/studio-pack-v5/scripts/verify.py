@@ -155,7 +155,7 @@ def summary_markdown(evidence):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--java-home", required=True, type=Path, help="Java 26 runtime JDK; Gradle retains its own JDK")
+    parser.add_argument("--java-home", required=True, type=Path, help="Java 25 runtime JDK; Gradle retains its own JDK")
     parser.add_argument("--maven", default="mvn", help="Maven executable or absolute path")
     parser.add_argument("--timeout", type=int, default=900, help="Timeout in seconds per command (default 900)")
     args = parser.parse_args()

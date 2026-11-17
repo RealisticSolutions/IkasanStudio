@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "V5.0.1-SNAPSHOT",
   "ikasanVersion": "5.0.1-SNAPSHOT",
-  "javaVersion": "26",
+  "javaVersion": "25",
   "dependencyManagement": [
     {
       "groupId": "org.ikasan",

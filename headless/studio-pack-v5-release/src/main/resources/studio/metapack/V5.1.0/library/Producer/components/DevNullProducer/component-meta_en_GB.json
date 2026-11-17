@@ -1,4 +1,5 @@
 {
+  "runtimeImplementingClass": "org.ikasan.component.endpoint.util.producer.DevNull",
   "flowTestObservationOnly": true,
   "name": "Dev Null Producer",
   "helpText": "<p>Discards every payload without further processing.</p>",

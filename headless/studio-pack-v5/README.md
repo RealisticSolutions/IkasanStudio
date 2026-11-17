@@ -5,18 +5,23 @@ The plugin embeds an optional resource-only copy, outside the normal plugin/CLI 
 Enable **Settings → Tools → Ikasan Studio → Allow snapshot meta-packs**, apply and
 restart the IDE on first activation. The selector then offers `V5.0.1-SNAPSHOT` without
 an external installation. See [demo preparation](../../docs/SnapshotMetaPacks.md). Configure the
-application project SDK, Maven runner and Run/Debug JRE as JDK 26.
+application project SDK, Maven runner and Run/Debug JRE as JDK 25.
 This development inclusion does not certify a Marketplace release or enable V5 migrations.
 Resources live here rather than in the released-pack directory so normal plugin/BOM/help-link gates
 continue to describe only the supported V3 and V4 packs.
 
 ## Baseline
 
+Generated projects now target **Java 25 LTS**, including this retained snapshot pack.
+The reference-source description and dated runtime results below describe older evidence;
+they do not certify current snapshot dependencies on JDK 25. Older cached snapshot JARs
+may contain Java 26 bytecode and need updating or rebuilding before use with JDK 25.
+
 - Pack ID / runtime: `V5.0.1-SNAPSHOT` / `5.0.1-SNAPSHOT`.
 - Pack revision: `0.1.0-SNAPSHOT` (independent of the runtime version).
 - Reference source: Ikasan commit `811a14b1ee7c202868d4bfbcac505d5da6a5565e`, inspected 14 October 2026
   in `/home/hidavi/dev/ws/ik5/ikasan5`.
-- The reference parent declares Java **26**, Spring Boot **4.1.0**, Spring **7.0.8** and ActiveMQ **6.2.6**.
+- The historical reference parent declared Java **26**, Spring Boot **4.1.0**, Spring **7.0.8** and ActiveMQ **6.2.6**.
 - JMS, resource and JAXB metadata retain the Jakarta namespace. The V5 email endpoint still imports
   `javax.mail`; do not mechanically migrate its mail fixtures to Jakarta Mail.
 - The V4 ActiveMQ 6.2.4 overrides are removed. The V5 BOM owns these versions.
@@ -32,7 +37,7 @@ For a complete development assessment, use the single verification command from 
 
 ```sh
 python3 headless/studio-pack-v5/scripts/verify.py \
-  --java-home /path/to/jdk-26 --maven /path/to/mvn
+  --java-home /path/to/jdk-25 --maven /path/to/mvn
 ```
 
 This explicitly exports fresh fixtures, runs the pack contracts, builds its JAR, compiles the
@@ -74,10 +79,10 @@ Individual commands remain available. Run from the repository root:
 ./gradlew -p headless :studio-pack-v5:test
 ./gradlew -p headless :studio-pack-v5:generateCompatibilityFixture
 # Use a Java 26 JDK for Maven; Gradle and the generator retain their existing Java 17 toolchain.
-JAVA_HOME=/path/to/jdk-26 mvn -nsu \
+JAVA_HOME=/path/to/jdk-25 mvn -nsu \
   -f headless/studio-pack-v5/build/compatibility-fixture/pom.xml test-compile
 # Bounded, local application startup + real generated observation test:
-JAVA_HOME=/path/to/jdk-26 mvn -nsu \
+JAVA_HOME=/path/to/jdk-25 mvn -nsu \
   -f headless/studio-pack-v5/build/compatibility-fixture/pom.xml \
   -Dtest=ExampleFlowFlowTest,BlueConsoleTest test
 ./gradlew -p headless :studio-pack-v5:jar
@@ -157,7 +162,7 @@ placed in `user`, generated sources/resources in `generated`, and test sources/r
 
 ```sh
 ./gradlew -p headless :studio-pack-v5:generateReactorFixture
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu -fae \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu -fae \
   -f headless/studio-pack-v5/build/reactor-fixture/pom.xml verify
 ```
 
@@ -185,7 +190,7 @@ component without a corresponding fixture fails the test.
 
 ```sh
 ./gradlew -p headless :studio-pack-v5:generateComponentCoverageFixture
-JAVA_HOME=/path/to/jdk-26 mvn -nsu \
+JAVA_HOME=/path/to/jdk-25 mvn -nsu \
   -f headless/studio-pack-v5/build/component-coverage-fixture/pom.xml test-compile
 ```
 
@@ -210,7 +215,7 @@ they do not run the unfinished business stubs from the catalogue compilation fix
 
 ```sh
 ./gradlew -p headless :studio-pack-v5:generateRuntimeTransportFixtures
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu -fae \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu -fae \
   -f headless/studio-pack-v5/build/runtime-transports/pom.xml test
 ```
 
@@ -278,9 +283,9 @@ repeat the tests against the formal V5 BOM before release.
 
 ```sh
 ./gradlew -p headless :studio-pack-v5:generateProcessingFixtures :studio-pack-v5:generateInputFixtures
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu -fae \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu -fae \
   -f headless/studio-pack-v5/build/processing-fixtures/pom.xml test
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu -fae \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu -fae \
   -f headless/studio-pack-v5/build/input-fixtures/pom.xml test
 ```
 
@@ -305,7 +310,7 @@ Reports are in each exported application's `target/surefire-reports` directory.
 
 ```sh
 ./gradlew -p headless :studio-pack-v5:generateRollbackFixtures
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu -fae \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu -fae \
   -f headless/studio-pack-v5/build/rollback-fixtures/pom.xml test
 ```
 
@@ -396,7 +401,7 @@ resolved dependency graph. It does not establish whether ActiveMQ, Narayana or t
 owns the defect, and is not evidence that resource cleanup is safe to ignore.
 
 ```sh
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu \
   -f headless/studio-pack-v5/build/rollback-fixtures/pom.xml \
   -pl jms -Dtest=JmsXaLifecycleTest test
 ```
@@ -417,7 +422,7 @@ release paths and their guards remain V3 ↔ V4; this rehearsal does not apply c
 
 ```sh
 ./gradlew -p headless :studio-pack-v5:generateMigrationFixtures
-JAVA_HOME=/path/to/jdk-26 mvn -B -nsu \
+JAVA_HOME=/path/to/jdk-25 mvn -B -nsu \
   -f headless/studio-pack-v5/build/migration-fixtures/pom.xml test
 ```
 

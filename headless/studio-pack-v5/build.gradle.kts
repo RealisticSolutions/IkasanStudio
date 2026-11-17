@@ -9,7 +9,7 @@ version = metadata["packVersion"] as String
 
 dependencies { testImplementation(project(":studio-test-kit")) }
 
-// Export a real generated application for Maven/JDK 26 checks without changing sample projects.
+// Export a real generated application for Maven/JDK 25 checks without changing sample projects.
 tasks.register<Test>("generateCompatibilityFixture") {
     description = "Render the Ikasan 5 snapshot compilation fixture (does not start flows)."
     group = "verification"
@@ -35,7 +35,7 @@ tasks.register<Test>("generateComponentCoverageFixture") {
     systemProperty("studio.v5.components", destination.get().asFile.absolutePath)
 }
 
-// Nine isolated apps: real local transport runtime verification is an explicit Maven/JDK 26 gate.
+// Nine isolated apps: real local transport runtime verification is an explicit Maven/JDK 25 gate.
 tasks.register<Test>("generateRuntimeTransportFixtures") {
     description = "Render local JMS, SMTP, FTP and SFTP runtime scenarios."
     group = "verification"

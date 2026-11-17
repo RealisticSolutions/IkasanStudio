@@ -33,22 +33,28 @@ No launch selection or generated file contains ephemeral SFTP credentials; those
 in memory by the project-owned server at launch.
 
 Start selected file/mail harnesses with **Harness Start**, then Run or Debug the module.
-FTP overrides use Studio's loopback server on port 2121; email overrides use the local
-SMTP inbox on port 1025. SFTP uses its allocated loopback port. A selected file harness
+FTP and SFTP overrides use separate project-owned servers on allocated loopback ports;
+email overrides use the local SMTP inbox on port 1025, which may be shared. A selected file harness
 must be running before launch. Port conflicts are reported rather than selecting a different
 external endpoint. JMS selection diverts to its existing reader's private test destination;
 it continues using the configured broker and does not start a broker.
 
 Selecting overrides chooses the connection settings; use **Harness Start** to start the
-local services. Each project's FTP server is owned by that IDE project, while port 2121
-is shared across the machine. If another project owns it, use **Harness Stop** in that
-project before starting this project's server. Stopping a module does not stop its
-IDE-owned FTP harness. Changing a component's `remotePort` does not change the fixed
-port used by FTP overrides. A launch refusal means the selected project-owned service
-is unavailable, even if a different FTP server is listening at that address.
+local services. Each project's FTP server binds directly to an OS-allocated port and
+uses that project's `temporary-files/test-data/ftp` directory. Studio injects the actual
+host, port, credentials and data root into selected Application Run/Debug launches.
+Two projects can run FTP harnesses concurrently; stopping one does not stop the other.
+The canvas and FTP server details use the allocated endpoint. Changing a component's
+`remotePort` changes its normal endpoint, not the selected local override. FTP servers
+started without overrides continue to honour their configured address and port.
+Stop an explicitly configured FTP server before switching that project to local overrides.
+Stopping a module does not stop its IDE-owned harness. If you stop/restart a harness,
+relaunch its module to pick up the new port. Existing generated harness adapters that
+read `studio.harness.ftp.*` properties work with the launch-injected endpoint without
+regeneration; the static generated port default is superseded only for selected launches.
 
 Regenerate existing projects before first use. For a V5.1.0 project locked to an older
-adapter revision, explicitly adopt revision **1.0.6** first. The generated inventory permits
+adapter revision, explicitly adopt revision **1.0.7** first. The generated inventory permits
 normal IntelliJ Application launches when the Studio editor is closed. Maven, JUnit and
 command-line launches do not automatically enable Studio harness overrides.
 

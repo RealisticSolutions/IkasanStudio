@@ -37,10 +37,11 @@ public final class StartTestFtpServerAction implements ActionListener {
                 try {
                     TestFtpServerService service = project.getService(TestFtpServerService.class);
                     boolean alreadyRunning = service.isRunningAt(configuration);
-                    Path root = service.start(configuration);
+                    Path root = harnessOverride ? service.startLocal() : service.start(configuration);
+                    var actual = harnessOverride ? service.localConfiguration() : configuration;
                     String statusMessage = alreadyRunning
-                            ? StudioBundle.message("message.TestFtpServerAlreadyRunning", configuration.address(), root)
-                            : StudioBundle.message("message.StartingTestFtpServer", configuration.address(), configuration.username(), root);
+                            ? StudioBundle.message("message.TestFtpServerAlreadyRunning", actual.address(), root)
+                            : StudioBundle.message("message.StartingTestFtpServer", actual.address(), actual.username(), root);
                     ApplicationManager.getApplication().invokeLater(() -> StudioUIUtils.displayIdeaInfoMessage(project,
                             statusMessage + "<br><br>" + StudioBundle.message("message.TestFtpServerOverwriteLimitation")));
                 } catch (IllegalArgumentException e) {
@@ -51,8 +52,8 @@ public final class StartTestFtpServerAction implements ActionListener {
                     LOG.warn("STUDIO: Could not start test FTP server: " + safeDetail);
                     if (isPortConflict(e)) {
                         ApplicationManager.getApplication().invokeLater(() -> StudioUIUtils.displayIdeaErrorMessage(project,
-                                StudioBundle.message(harnessOverride ? "message.TestFtpHarnessPortConflict"
-                                        : "message.TestFtpServerPortConflict", configuration.address())));
+                                harnessOverride ? StudioBundle.message("message.TestFtpHarnessPortConflict")
+                                        : StudioBundle.message("message.TestFtpServerPortConflict", configuration.address())));
                         return;
                     }
                     ApplicationManager.getApplication().invokeLater(() -> StudioUIUtils.displayIdeaErrorMessage(project,

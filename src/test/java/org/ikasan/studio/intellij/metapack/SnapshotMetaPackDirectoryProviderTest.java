@@ -26,7 +26,7 @@ class SnapshotMetaPackDirectoryProviderTest {
         assertFalse(SnapshotMetaPackDirectoryProvider.hasInstalledV5(directory.resolve("missing")));
         MetaPackResources.inspect(archive, () -> {
             var manifest = new ComponentLibraryLoader().loadManifest(archive.id());
-            assertEquals("26", manifest.javaVersion());
+            assertEquals("25", manifest.javaVersion());
             assertEquals("5.0.1-SNAPSHOT", manifest.ikasanVersion());
             return null;
         });

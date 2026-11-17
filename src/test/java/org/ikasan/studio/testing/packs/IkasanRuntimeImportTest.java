@@ -547,6 +547,40 @@ class IkasanRuntimeImportTest {
         assertThat(JSON.readTree(result.studioJson()).path("flows").get(0).path("consumer").has("cronExpression")).isFalse();
     }
 
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    void importsDevNullWithBuilderConstructionAndRetainsItAfterSaving(String pack) throws Exception {
+        for (String identity : java.util.List.of("org.ikasan.component.endpoint.util.producer.DevNull",
+                "org.ikasan.builder.component.endpoint.DevNullProducerBuilderImpl")) {
+            var input = topology(pack);
+            var endpoint = component(pack, "Dev Null Producer", "Log").put("implementingClass", identity);
+            ((com.fasterxml.jackson.databind.node.ArrayNode) input.path("flows").get(0).path("flowElements")).set(0, endpoint);
+            var result = IkasanRuntimeImport.convert(input.toString(), configuration().toString(), pack, "org.example", mappings());
+            var producer = JSON.readTree(result.studioJson()).path("flows").get(0).path("flowElements").get(0);
+            assertThat(producer.path("implementingClass").asText()).isEqualTo("org.ikasan.builder.component.endpoint.DevNullProducerBuilderImpl");
+            assertThat(producer.has("userImplementedClassName")).isFalse();
+            assertThat(result.reviewItems()).noneMatch(item -> item.kind() == IkasanRuntimeImport.ReviewKind.IMPLEMENTATION
+                    && item.component().component().equals("Log"));
+            var module = ComponentIO.validatePersistedModuleJson(result.studioJson(), "DevNull import", false);
+            module = ComponentIO.validatePersistedModuleJson(ComponentIO.toValidatedModuleJson(module), "DevNull reload", false);
+            String factory = org.ikasan.studio.core.generator.FlowsComponentFactoryTemplate.create(
+                    "org.example", module, module.getFlows().get(0));
+            assertThat(factory).contains(".devNullProducer()", ".build()")
+                    .doesNotContain("org.ikasan.component.endpoint.util.producer.DevNull", "return log;");
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    void similarlyNamedCustomProducerRemainsAnExistingUserImplementation(String pack) throws Exception {
+        var input = topology(pack);
+        ((ObjectNode) input.path("flows").get(0).path("flowElements").get(0))
+                .put("implementingClass", "example.custom.DevNull");
+        var result = IkasanRuntimeImport.convert(input.toString(), configuration().toString(), pack, "org.example", mappings());
+        var producer = JSON.readTree(result.studioJson()).path("flows").get(0).path("flowElements").get(0);
+        assertThat(producer.path("userImplementedClassName").asText()).isEqualTo("example.custom.DevNull");
+        assertThat(producer.path("requiresStub").asBoolean(true)).isFalse();
+        assertThat(result.review().toString()).contains("supply existing implementation example.custom.DevNull");
+    }
+
     @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void importsConcreteFtpAndSftpRuntimeClassesWithoutGenericFallback(String pack) throws Exception {
         for (String protocol : java.util.List.of("ftp", "sftp")) {

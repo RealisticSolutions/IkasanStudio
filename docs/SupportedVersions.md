@@ -9,7 +9,7 @@ This page describes the repository configuration for the public beta. Check the 
 | Configured binary compatibility checks | IDEA Community 2024.2 and 2024.3.7; IDEA 2026.2.2 |
 | Default bundled Ikasan packs | V3.3.9, V4.1.6 and V5.1.0 |
 | Opt-in development pack | V5.0.1-SNAPSHOT via **Allow snapshot meta-packs** in Studio settings |
-| V5.0.1-SNAPSHOT project JDK | Java 26 |
+| V5.0.1-SNAPSHOT project JDK | Java 25 (LTS); use Java 25-compatible snapshot dependencies |
 | V3.3.9 project JDK | Java 11 |
 | V4.1.6 project JDK | Java 17 |
 | V5.1.0 project JDK | Java 25 (LTS) |
