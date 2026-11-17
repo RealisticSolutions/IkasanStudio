@@ -65,7 +65,8 @@ public class DesignerUI implements Disposable {
         this.initialisationService = project.getService(StudioProjectInitialisationService.class);
         this.initialisationPanel = new StudioInitialisationPanel(initialisationService::start,
                 initialisationService::restoreModelBackup,
-                () -> org.ikasan.studio.intellij.metapack.RepairModelAction.review(project));
+                () -> org.ikasan.studio.intellij.metapack.RepairModelAction.review(project),
+                initialisationService::reloadMavenProject);
         project.getMessageBus().connect(this).subscribe(
                 StudioProjectInitialisationService.Listener.TOPIC,
                 this::initialisationStateChanged);
@@ -314,7 +315,7 @@ public class DesignerUI implements Disposable {
             contentLayout.show(contentPanel, state == StudioProjectInitialisationService.State.READY
                     ? DESIGNER_CARD : INITIALISING_CARD);
             switch (state) {
-                case WAITING_FOR_PROJECT_IMPORT -> initialisationPanel.showWaitingForProjectImport();
+                case WAITING_FOR_PROJECT_IMPORT -> initialisationPanel.showWaitingForProjectImport(detail);
                 case WAITING_FOR_INDEXES -> initialisationPanel.showWaitingForIndexes();
                 case READING_PROJECT -> initialisationPanel.showReadingProject();
                 case LOADING_COMPONENTS -> {

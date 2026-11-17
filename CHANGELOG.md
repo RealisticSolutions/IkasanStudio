@@ -5,6 +5,10 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Offer Reload Maven project directly on the Studio waiting screen. Request a full Maven workspace reimport rather than only repeating the readiness check, and distinguish these actions in startup guidance.
+
+- Recover Studio initialization after missed Maven roots events with disposed-aware readiness rechecks. Match imported generated-module roots by filesystem path, support split source/test roots, expose root diagnostics while waiting, and make readiness-check failures recoverable.
+
 - Reserve a separate left canvas column for running FTP/SFTP consumer harness nodes, using effective override addresses and active selections. Keep cards clear of flow transport controls and status hover targets, including reduced layout offsets.
 
 - Add Review Model Repair to Tools and the recovery screen. Preview and validate revision-lock repairs and the retired V5 snapshot transition, render templates before confirmation, preserve an exact original backup, reject stale changes, and reload with save protection retained.

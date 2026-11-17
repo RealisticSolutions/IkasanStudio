@@ -458,17 +458,6 @@ public class StudioProjectFiles {
     }
 
     /**
-     * The project root's on-disk path, or null if the VFS cannot currently resolve it (e.g. a project that
-     * needs resaving) - lets a caller check/use the project root without depending on {@code VirtualFile}
-     * itself (see ArchUnitBoundaryTest#platformHeavyApisRemainBehindKnownAdapters).
-     * @param project is the Intellij project instance
-     */
-    public static String getProjectBasePath(Project project) {
-        VirtualFile baseDir = getProjectBaseDir(project);
-        return baseDir != null ? baseDir.getPath() : null;
-    }
-
-    /**
      * Shows IntelliJ's native "Save As" file dialog and returns the chosen destination as a plain {@code File},
      * never exposing {@code VirtualFileWrapper} to the caller (see
      * ArchUnitBoundaryTest#platformHeavyApisRemainBehindKnownAdapters).
@@ -1273,16 +1262,24 @@ public class StudioProjectFiles {
      * @return the content root if its found, nulll otherwise.
      */
     protected static VirtualFile getSpecificContentRootFromCache(final Project project) {
-        VirtualFile targetContentRoot = null;
-        VirtualFile[] contentRootVFiles = ProjectRootManager.getInstance(project).getContentRoots();
+        return findGeneratedContentRoot(project.getBasePath(), ProjectRootManager.getInstance(project).getContentRoots());
+    }
 
-        for (VirtualFile vFile : contentRootVFiles) {
-            if (vFile.toString().endsWith(StudioProjectFiles.GENERATED_CONTENT_ROOT)) {
-                targetContentRoot = vFile;
-                break;
+    static VirtualFile findGeneratedContentRoot(String basePath, VirtualFile[] roots) {
+        if (basePath == null) return null;
+        String expected = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(basePath)
+                .replaceAll("/+$", "") + GENERATED_CONTENT_ROOT;
+        for (VirtualFile root : roots) {
+            if (!root.isValid()) continue;
+            String path = root.getPath();
+            if (expected.equals(path)) return root;
+            // Some Maven layouts register separate source/test content roots below generated/.
+            if (path.startsWith(expected + "/")) {
+                VirtualFile generated = root.getFileSystem().findFileByPath(expected);
+                if (generated != null && generated.isValid()) return generated;
             }
         }
-        return targetContentRoot;
+        return null;
     }
 
     /**

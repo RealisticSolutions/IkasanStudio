@@ -29,6 +29,8 @@ Screen shot for changing catalog as described above
 
 <img src="images/AddCatalog.png" alt="Ikasan Studio catalog" width="600"/>
 
+Studio’s **Waiting for the generated Maven module** screen reports the expected generated directory and IntelliJ’s registered content roots. Studio rechecks readiness automatically, including after a missed Maven roots event. If Maven reports import completion but Studio is still waiting, click **Retry**. If roots remain absent, use **Reload Maven project** on the waiting screen to request a full reimport. The equivalent **Reload All Maven Projects** action is available in the Maven tool window. Inspect Maven’s import errors if roots remain unavailable. Retry only checks readiness; it does not request an import. An import-completed log entry alone does not establish that every required content root remains registered.
+
 For custom component failures, inspect developer-owned implementations under `user/`; generated stubs still need business logic. After changing Maven dependencies or generated code, allow import/build to finish and restart the running module.
 
 If the problem remains, use **Tools → Ikasan Studio → Collect Ikasan Studio Diagnostics…**. Review the local ZIP and include the Studio version, IntelliJ IDEA version/edition and full build, operating system, selected Ikasan version, reproduction steps and expected/actual behaviour in your support report. Model or application-log attachments require separate review; they are not automatically included. See [diagnostics and privacy](DiagnosticsAndPrivacy.md).
