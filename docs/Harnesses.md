@@ -2,6 +2,8 @@
 
 Harnesses support local development. Start with a disposable project and test endpoints, apply **Update Code**, and restart the module whenever generated configuration changes. Actions are shown only for components and states that support them. Toolbar harness start/stop controls manage the module's FTP, local SFTP and mail test harnesses; they do not start a JMS broker or the application.
 
+A green badge on **Harness Start** indicates running services owned by this project. Hover over Start or Stop for the active FTP, SFTP and SMTP services. Both controls remain available during partial startup or after a failure; Start starts missing services and Stop stops the harnesses.
+
 ## Mix harness and configured connections
 
 Use the **Harness overrides** cog in the **Harness** toolbar group to choose which components use

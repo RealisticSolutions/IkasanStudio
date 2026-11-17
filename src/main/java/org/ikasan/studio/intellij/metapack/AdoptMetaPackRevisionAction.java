@@ -56,7 +56,7 @@ public final class AdoptMetaPackRevisionAction extends DumbAwareAction {
         catch (Exception e) { Messages.showErrorDialog(project, StudioBundle.message("metaPack.Failed", e.getMessage()), title); }
         finally { if (acquired) context.endMigration(); }
     }
-    private static void checkUnsaved(com.intellij.openapi.project.Project project) {
+    static void checkUnsaved(com.intellij.openapi.project.Project project) {
         for (var document : FileDocumentManager.getInstance().getUnsavedDocuments()) {
             var file = FileDocumentManager.getInstance().getFile(document);
             if (file != null && project.getBasePath() != null && file.getPath().startsWith(project.getBasePath() + "/"))

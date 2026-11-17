@@ -207,15 +207,23 @@ public final class IkasanModelDocuments {
         StudioDocumentMetadata.normalize(studio);
         knownFields(studio, Set.of("metaPack", "metaPackRevision", "properties", "flows"));
         String pack = text(studio, "metaPack");
+        final org.ikasan.studio.core.metapack.model.MetaPackManifest manifest;
+        try {
+            manifest = ComponentLibrary.getMetaPackManifest(pack);
+        } catch (org.ikasan.studio.core.StudioBuildException e) {
+            throw new IOException("This model requires meta-pack " + pack
+                    + (studio.has("metaPackRevision") ? " at revision " + text(studio, "metaPackRevision") : "")
+                    + ", which is unavailable or invalid. Install the required pack, or explicitly update the model to a supported pack after review. The model is unchanged.", e);
+        }
         try {
             if (studio.has("metaPackRevision")) {
                 String requiredRevision = text(studio, "metaPackRevision");
-                String availableRevision = ComponentLibrary.getMetaPackManifest(pack).packVersion();
+                String availableRevision = manifest.packVersion();
                 if (!requiredRevision.equals(availableRevision)) throw invalid("Meta-pack " + pack
                         + " is locked to revision " + requiredRevision + ", but the available revision is " + availableRevision
                         + ". Restore the required revision using Manage Meta-Packs, or review and explicitly adopt the available revision. The model is unchanged.");
             }
-            if (!ComponentLibrary.getMetaPackManifest(pack).ikasanVersion().equals(text(module, "ikasanVersion")))
+            if (!manifest.ikasanVersion().equals(text(module, "ikasanVersion")))
                 throw invalid("module.ikasanVersion does not match studio.metaPack");
             Map<String, ObjectNode> configs = index(requiredArray(input.get("configuration"), "configuration"), "configurationId", "configuration");
             for (ObjectNode config : configs.values()) index(requiredArray(config.get("parameters"), "parameters"), "name", "parameters");

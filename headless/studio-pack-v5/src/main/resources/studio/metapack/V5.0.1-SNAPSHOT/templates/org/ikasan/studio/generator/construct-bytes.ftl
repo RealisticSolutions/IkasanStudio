@@ -1,1 +1,0 @@
-            return bytes(body, charset);

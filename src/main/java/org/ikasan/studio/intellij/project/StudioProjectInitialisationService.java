@@ -150,10 +150,10 @@ public final class StudioProjectInitialisationService implements Disposable {
                 if (uiContext.isModelPersistenceBlocked()) {
                     validModelBackupIndexes = StudioProjectFiles.getValidModelBackupIndexes(project);
                     String recoveryGuidance = validModelBackupIndexes.isEmpty()
-                            ? "No valid automatic backup was found; correct the preserved file, then use Reload from Disk."
-                            : "Choose a validated backup below, or correct the preserved file and use Reload from Disk.";
+                            ? org.ikasan.studio.ui.StudioBundle.message("modelRepair.NoBackupGuidance")
+                            : org.ikasan.studio.ui.StudioBundle.message("modelRepair.BackupGuidance");
                     fail("Studio opened in recovery mode because model.json could not be loaded safely. " +
-                            "The original file is preserved. " + recoveryGuidance, null);
+                            "The original file is preserved. " + uiContext.getModelPersistenceBlockReason() + " " + recoveryGuidance, null);
                     return;
                 }
                 if (uiContext.getIkasanModule() == null) {

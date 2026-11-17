@@ -23,9 +23,10 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
     private final JBLabel statusLabel = new JBLabel();
     private final JBTextArea detailText = new JBTextArea();
     private final LinkLabel<Object> retryLink = new LinkLabel<>(StudioBundle.message("label.Retry"), null);
+    private final LinkLabel<Object> repairLink = new LinkLabel<>(StudioBundle.message("modelRepair.Link"), null);
     private final JPanel recoveryLinks = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
 
-    public StudioInitialisationPanel(Runnable retryAction, IntConsumer restoreBackupAction) {
+    public StudioInitialisationPanel(Runnable retryAction, IntConsumer restoreBackupAction, Runnable repairAction) {
         super(new GridBagLayout());
         setBorder(JBUI.Borders.empty(24));
 
@@ -45,6 +46,8 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
 
         retryLink.setListener((source, data) -> retryAction.run(), null);
         retryLink.setVisible(false);
+        repairLink.setListener((source, data) -> repairAction.run(), null);
+        repairLink.setVisible(false);
         recoveryLinks.setOpaque(false);
         recoveryLinks.setVisible(false);
         for (int index = 1; index <= 3; index++) {
@@ -99,6 +102,9 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
         add(recoveryLinks, constraints);
 
         constraints.gridy++;
+        add(repairLink, constraints);
+
+        constraints.gridy++;
         constraints.weighty = 1;
         add(Box.createVerticalGlue(), constraints);
 
@@ -148,6 +154,7 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
         statusLabel.setText(StudioBundle.message("message.IkasanStudioCouldNotPrepareThisProject"));
         detailText.setText(detail);
         retryLink.setVisible(true);
+        repairLink.setVisible(true);
         for (Component component : recoveryLinks.getComponents()) {
             int index = Integer.parseInt(component.getName().replace("restoreModelBackup", ""));
             component.setVisible(backupIndexes.contains(index));
@@ -162,6 +169,7 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
         statusLabel.setText(status);
         detailText.setText(detail);
         retryLink.setVisible(false);
+        repairLink.setVisible(false);
         recoveryLinks.setVisible(false);
         revalidate();
         repaint();

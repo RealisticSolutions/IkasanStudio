@@ -89,6 +89,11 @@ public final class TestMailServerSessionService implements Disposable {
         ownedHarnesses.remove(host + ":" + port);
     }
 
+    /** Cached readiness only: safe to read from toolbar updates on the EDT. */
+    public boolean hasAnyOwnedListening() {
+        return ownedHarnesses.keySet().stream().anyMatch(listeningAddresses::contains);
+    }
+
     public boolean hasAnyOwned() {
         return !ownedHarnesses.isEmpty();
     }

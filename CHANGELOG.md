@@ -5,6 +5,16 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Reserve a separate left canvas column for running FTP/SFTP consumer harness nodes, using effective override addresses and active selections. Keep cards clear of flow transport controls and status hover targets, including reduced layout offsets.
+
+- Add Review Model Repair to Tools and the recovery screen. Preview and validate revision-lock repairs and the retired V5 snapshot transition, render templates before confirmation, preserve an exact original backup, reject stale changes, and reload with save protection retained.
+
+- Report unavailable model meta-packs with the required ID and revision, and distinguish model compatibility errors from malformed JSON while preserving the model and save protection.
+
+- Show active project-owned harness services with a live badge and accessible toolbar tooltips. Keep Start/Stop available during partial startup. Identify module Debug launches by their IntelliJ executor so additional program arguments do not move the restart indicator to Run.
+
+- Retire the unused V5.0.1-SNAPSHOT meta-pack and its optional activation payload. Use released V5.1.0 with JDK 25 as the built-in Ikasan 5 option; retain support for independently installed experimental packs.
+
 - Allocate an independent loopback FTP port per project for harness overrides. Inject the owned endpoint into Run/Debug, display the actual endpoint on the canvas and in server details, and keep data directories and stop/restart lifecycles isolated across projects. Preserve explicitly configured FTP server ports when overrides are disabled.
 
 - Align the retained V5.0.1-SNAPSHOT pack's generated Maven compiler settings and the V5 sample POMs with Java 25 LTS. Update current SDK/verification guidance and regression expectations; preserve dated Java 26 evidence as historical.

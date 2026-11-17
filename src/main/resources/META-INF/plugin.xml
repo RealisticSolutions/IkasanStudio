@@ -83,6 +83,8 @@
             <separator/>
             <action id="IkasanStudio.ManageMetaPacks"
                     class="org.ikasan.studio.intellij.metapack.ManageMetaPacksAction"/>
+            <action id="IkasanStudio.RepairModel"
+                    class="org.ikasan.studio.intellij.metapack.RepairModelAction"/>
             <action id="IkasanStudio.AdoptMetaPackRevision"
                     class="org.ikasan.studio.intellij.metapack.AdoptMetaPackRevisionAction"/>
             <action id="IkasanStudio.InstallMetaPack"

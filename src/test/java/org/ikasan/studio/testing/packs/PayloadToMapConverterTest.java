@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Tag("packs")
 class PayloadToMapConverterTest {
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void rendersRealConverterAndExportsRuntimeCompilationFixture(String pack) throws Exception {
         var meta = ComponentLibrary.getIkasanComponentByKeyMandatory(pack, "Payload To Map Converter");
         assertEquals("org.ikasan.filetransfer.Payload", meta.getExpectedInputTypes());
@@ -145,7 +145,7 @@ class PayloadToMapConverterTest {
                 }
                 """);
     }
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void runtimeImportRecognisesTheStandardConverterWithoutRequestingAStub(String pack) throws Exception {
         var json = new com.fasterxml.jackson.databind.ObjectMapper();
         var topology = json.createObjectNode().put("name", "Existing Module");

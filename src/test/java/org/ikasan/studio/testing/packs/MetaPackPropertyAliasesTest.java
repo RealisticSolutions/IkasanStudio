@@ -64,7 +64,7 @@ class MetaPackPropertyAliasesTest {
         assertThat(properties.stringPropertyNames()).anyMatch(key -> key.endsWith(".cleanupChunks"));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void historicalFlatModelsKeepTrueFalseAndSftpSettings(String pack) throws Exception {
         for (boolean attachment : List.of(false, true)) {
             ObjectNode legacy = (ObjectNode) JSON.readTree(ComponentIO.toJson(module(pack, attachment)));
@@ -81,7 +81,7 @@ class MetaPackPropertyAliasesTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void historicalDocumentContainerPropertiesMigrateWithoutLosingValues(String pack) throws Exception {
         ObjectNode document = (ObjectNode) JSON.readTree(ModelTemplate.create(module(pack, true)));
         var flowSettings = document.path("studio").path("flows").elements().next().path("components");
@@ -100,7 +100,7 @@ class MetaPackPropertyAliasesTest {
         assertValuesAndGeneration(restored, true);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void correctedNamesImportDirectlyFromRuntimeConfiguration(String pack) throws Exception {
         var topology = JSON.createObjectNode().put("name", "Imported").put("ikasanVersion", pack.substring(1));
         var flow = topology.putArray("flows").addObject().put("name", "Imported Flow").put("flowStartupType", "AUTOMATIC");
@@ -131,7 +131,7 @@ class MetaPackPropertyAliasesTest {
         assertThat(restoredFlow.getFlowRoute().getFlowElements().get(1).getPropertyValue("hasAttachment")).isEqualTo(true);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void conflictingHistoricalAndCanonicalValuesAreRejected(String pack) throws Exception {
         ObjectNode legacy = (ObjectNode) JSON.readTree(ComponentIO.toJson(module(pack, true)));
         var email = (ObjectNode) legacy.path("flows").get(0).path("flowElements").get(0);

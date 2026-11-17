@@ -38,15 +38,15 @@ class DesignerCanvasTest {
                     var field = DesignerCanvas.class.getDeclaredField("metaDataVersionComboBox");
                     field.setAccessible(true);
                     var choices = (javax.swing.JComboBox<?>) field.get(canvas);
-                    canvas.setAvailableMetaPacks(List.of("V4.1.6", "V5.0.1-SNAPSHOT", "AcmePack"),
-                            java.util.Set.of("V5.0.1-SNAPSHOT", "AcmePack"));
+                    canvas.setAvailableMetaPacks(List.of("V4.1.6", "Example-SNAPSHOT", "AcmePack"),
+                            java.util.Set.of("Example-SNAPSHOT", "AcmePack"));
                     assertThat(choices.getItemCount()).isEqualTo(1);
                     assertThat(choices.getSelectedItem()).isEqualTo("V4.1.6");
                     settings.when(org.ikasan.studio.intellij.settings.IkasanStudioSettings::areSnapshotMetaPacksAllowed).thenReturn(true);
                     canvas.refreshMetaPackChoices();
                     assertThat(choices.getItemCount()).isEqualTo(3);
                     assertThat(choices.getSelectedItem()).isEqualTo("V4.1.6");
-                    canvas.setSelectedMetapackVersion("V5.0.1-SNAPSHOT");
+                    canvas.setSelectedMetapackVersion("Example-SNAPSHOT");
                     settings.when(org.ikasan.studio.intellij.settings.IkasanStudioSettings::areSnapshotMetaPacksAllowed).thenReturn(false);
                     canvas.refreshMetaPackChoices();
                     assertThat(choices.getItemCount()).isEqualTo(1);

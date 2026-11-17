@@ -61,7 +61,7 @@ class RuntimeConfigurationMappingsTest {
         return ComponentIO.validatePersistedModuleJson(result.studioJson(), "runtime names", false);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void runtimeNamesImportSaveReloadAndExportAsTheOriginalApiNames(String pack) throws Exception {
         var module = imported(pack, fixture(pack));
         for (int pass = 0; pass < 2; pass++) {
@@ -96,7 +96,7 @@ class RuntimeConfigurationMappingsTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void previousStudioContainerPropertiesMoveToRuntimeRecordsWithoutValueLoss(String pack) throws Exception {
         var module = imported(pack, fixture(pack));
         ObjectNode document = (ObjectNode) JSON.readTree(ModelTemplate.create(module));
@@ -125,7 +125,7 @@ class RuntimeConfigurationMappingsTest {
                 .hasMessageContaining("Conflicting Studio and runtime configuration field mailhost");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void wrongClassWrongTypeAndUnknownSpellingAreNotGuessed(String pack) throws Exception {
         var fixture = fixture(pack);
         var email = (ObjectNode) fixture.configuration().get(2);
@@ -143,7 +143,7 @@ class RuntimeConfigurationMappingsTest {
         assertThat(mismatch.review().toString()).contains("password", "subject", "mailTransportProtocol");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void packValidationRejectsRedundantUnknownAmbiguousAndShadowingMappings(String pack) throws Exception {
         var original = ComponentLibrary.getIkasanComponentByKeyMandatory(pack, "Email Producer");
         for (var invalid : List.of(Map.of("mailhost", "mailhost"), Map.of("mailHost", "missingProperty"),

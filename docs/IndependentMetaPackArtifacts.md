@@ -13,10 +13,10 @@ The IntelliJ plugin, generator, test kit and official packs remain in this repos
 | `studio-pack-v5-release` | `studio-pack-v5-release` | `V5.1.0` | `5.1.0` | `1.0.7` |
 
 `studio-pack-v5-release:1.0.7` is the normally bundled released adapter for `V5.1.0`.
-`studio-pack-v5` remains a separate, opt-in development artifact targeting `V5.0.1-SNAPSHOT`.
+The unused `studio-pack-v5` snapshot module and optional activation payload have been removed.
 The standalone Maven [Ikasan 5 authoring example](../ikasan-studio-ancillary/ikasan5-metapack/README.md)
 targets runtime 5.1.0 with the distinct ID `ExampleIkasan5`.
-The released resources and verification instructions are under [headless/studio-pack-v5-release](../headless/studio-pack-v5-release/README.md). The historical snapshot remains opt-in and retains its separate ID and evidence.
+The released resources and verification instructions are under [headless/studio-pack-v5-release](../headless/studio-pack-v5-release/README.md). Historical snapshot verification reports record their original checkout; they do not describe the current bundled packs.
 
 Each pack JAR contains only that pack's descriptors, templates and images. It has no production dependency on the generator, test kit, IntelliJ or another pack. `studio-bundled-packs` is a dependency bundle: its published POM/Gradle metadata selects all three exact revisions. The plugin consumes this bundle, and its ZIP includes all three released pack JARs. Never copy the pack resources back into the bundle or plugin JAR.
 

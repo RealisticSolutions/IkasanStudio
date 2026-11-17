@@ -38,6 +38,25 @@ class TestMailServerFailureInjectionTest {
     }
 
     @Test
+    void toolbarReadinessRequiresOwnedAndConfirmedListeningHarness() {
+        var project = mock(Project.class);
+        when(project.getService(UiContext.class)).thenReturn(mock(UiContext.class));
+        var listening = new AtomicBoolean();
+        var service = new TestMailServerSessionService(project, mock(Alarm.class), () -> 0,
+                (host, port) -> listening.get());
+        try {
+            assertFalse(service.hasAnyOwnedListening());
+            service.registerOwned("localhost", 2525, () -> { });
+            assertFalse(service.hasAnyOwnedListening(), "Starting is not confirmed listening");
+            listening.set(true);
+            service.probeAndUpdateState();
+            assertTrue(service.hasAnyOwnedListening());
+            service.stopAnyOwned();
+            assertFalse(service.hasAnyOwnedListening(), "Cached listening alone does not establish ownership");
+        } finally { service.dispose(); }
+    }
+
+    @Test
     void processRegisteredAfterDisposalIsStoppedImmediately() {
         var project = mock(Project.class);
         var stopped = new AtomicBoolean();

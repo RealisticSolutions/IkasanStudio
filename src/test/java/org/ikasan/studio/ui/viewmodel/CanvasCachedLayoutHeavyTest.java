@@ -11,10 +11,40 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.Assert.assertArrayEquals;
+
 public class CanvasCachedLayoutHeavyTest extends HeavyPlatformTestCase {
     static {
         try { TestFixtures.getEventGeneratingConsumer(TestFixtures.BASE_META_PACK); }
         catch (Exception e) { throw new ExceptionInInitializerError(e); }
+    }
+
+    public void testLeftFileServerCardClearsTransportControlsEvenWithSmallConfiguredOffsets() throws Exception {
+        var context = myProject.getService(UiContext.class);
+        context.setViewHandlerFactory(new ViewHandlerCache(myProject));
+        var consumer = TestFixtures.getFtpConsumer(TestFixtures.BASE_META_PACK);
+        var flow = TestFixtures.getUnbuiltFlow(TestFixtures.BASE_META_PACK).consumer(consumer).build();
+        consumer.setContainingFlow(flow);
+        var producer = TestFixtures.getLoggingProducer(TestFixtures.BASE_META_PACK);
+        producer.setContainingFlow(flow); producer.setContainingFlowRoute(flow.getFlowRoute());
+        flow.getFlowRoute().setFlowElements(new ArrayList<>(List.of(producer)));
+        context.setIkasanModule(TestFixtures.getMyFirstModuleIkasanModule(TestFixtures.BASE_META_PACK, List.of(flow)));
+        var handler = ViewHandlerCache.getFlowViewHandler(myProject, flow);
+        var graphics = new BufferedImage(1600, 600, BufferedImage.TYPE_INT_ARGB).createGraphics();
+        try {
+            for (int configured : new int[] {0, 150, 260, 400}) {
+                int left = IkasanModuleViewHandler.flowXStartPoint(configured, true);
+                handler.initialiseDimensions(graphics, left, 100, 1600, 600);
+                handler.paintLaidOutComponent(new JPanel(), graphics);
+                var endpoint = handler.getEndpointViewHandlerFor(consumer);
+                // Actual server geometry: a 90 px card placed 20 px beyond the endpoint connector.
+                int serverLeft = endpoint.getLeftConnectorPoint().x - 20 - 90;
+                assertTrue("Server card must clear the transport/status hover gutter at offset " + configured,
+                        serverLeft > 24 + 14 + 6 + 160);
+                assertEquals("Idle layout preserves the configured offset", configured,
+                        IkasanModuleViewHandler.flowXStartPoint(configured, false));
+            }
+        } finally { graphics.dispose(); context.getViewHandlerFactory().clear(); }
     }
 
     public void testDefaultRouterBranchStaysInsideItsFlowAndClearOfTheNextFlow() throws Exception {
@@ -94,8 +124,9 @@ public class CanvasCachedLayoutHeavyTest extends HeavyPlatformTestCase {
                         flowHandler.paintComponent(canvas, referenceGraphics, -1, flowHandler.getTopY());
                     }
                     handler.paintComponent(canvas, cachedGraphics, -1, -1);
-                    assertTrue("Paint differs at scroll " + scroll, java.util.Arrays.equals(
-                            expected.getRGB(0, 0, 1200, 700, null, 0, 1200), actual.getRGB(0, 0, 1200, 700, null, 0, 1200)));
+                    assertArrayEquals("Paint differs at scroll " + scroll,
+                            expected.getRGB(0, 0, 1200, 700, null, 0, 1200),
+                            actual.getRGB(0, 0, 1200, 700, null, 0, 1200));
                 } finally { referenceGraphics.dispose(); cachedGraphics.dispose(); }
             }
         } finally { context.getViewHandlerFactory().clear(); }

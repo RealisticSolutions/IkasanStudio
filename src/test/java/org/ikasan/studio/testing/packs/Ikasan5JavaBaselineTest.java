@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("packs")
 class Ikasan5JavaBaselineTest {
     @ParameterizedTest
-    @ValueSource(strings = {"V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ValueSource(strings = {"V5.1.0"})
     void regenerationReplacesJava26CompilerSettingsWithJava25(String pack) throws Exception {
         var model = new Model();
         for (String key : new String[]{"maven.compiler.source", "maven.compiler.target", "maven.compiler.release"})

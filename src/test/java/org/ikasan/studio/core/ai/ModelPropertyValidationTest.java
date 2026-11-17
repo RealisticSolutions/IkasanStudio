@@ -146,7 +146,7 @@ class ModelPropertyValidationTest {
         });
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void routerListsAcceptSavedArraysAndLegacyTextButKeepCardinalityAndNameRules(String pack) throws Exception {
         var model = model(pack);
         var router = component(model, "Single Recipient Router", "Either or Router");

@@ -182,7 +182,7 @@ public class ComponentPropertyEditRowRegexValidationTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void routerListsValidateTheWholeListAndRetainRouteOrder(String pack) throws Exception {
         var single = ComponentLibrary.getIkasanComponentByKeyMandatory(pack, "Single Recipient Router").getMetadata("routeNames");
         var row = new ComponentPropertyEditRow(null, new ComponentProperty(single), false, () -> {}, new HashMap<>());

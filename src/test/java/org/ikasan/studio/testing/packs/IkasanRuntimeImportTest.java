@@ -139,7 +139,7 @@ class IkasanRuntimeImportTest {
         assertThatThrownBy(() -> convert(tree)).hasMessageContaining("disconnected");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void preservesRunningApplicationPortFromMetadata(String pack) throws Exception {
         var input = topology(pack).put("port", 12450);
         var result = IkasanRuntimeImport.convert(input.toString(), configuration().toString(), pack, "org.example");
@@ -162,7 +162,7 @@ class IkasanRuntimeImportTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void preservesMixedFlowStartupControlsInModelAndGeneratedProperties(String pack) throws Exception {
         var input = topology(pack);
         var flows = (com.fasterxml.jackson.databind.node.ArrayNode) input.path("flows");
@@ -187,7 +187,7 @@ class IkasanRuntimeImportTest {
                 .isEqualTo(input);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void missingAndNullStartupControlsFallBackToManualWithFlowSpecificReview(String pack) throws Exception {
         var input = topology(pack);
         var flow = (ObjectNode) input.path("flows").get(0);
@@ -205,7 +205,7 @@ class IkasanRuntimeImportTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void unknownAndMalformedStartupControlsAreRejectedBeforeImport(String pack) throws Exception {
         var input = topology(pack);
         var flow = (ObjectNode) input.path("flows").get(0);
@@ -225,7 +225,7 @@ class IkasanRuntimeImportTest {
         assertThatThrownBy(() -> convert(tree)).hasMessageContaining("duplicate component");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void linkedConfigurationClassesResolveAllFourScheduledConsumerVariants(String pack) throws Exception {
         for (String variant : java.util.List.of("Scheduled Consumer", "FTP Consumer", "SFTP Consumer", "Local File Consumer")) {
             var input = topology(pack);
@@ -245,7 +245,7 @@ class IkasanRuntimeImportTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void reviewOnlyHighlightsPopulatedUnappliedFieldsAndRequiredWiring(String pack) throws Exception {
         var input = topology(pack);
         var config = configuration();
@@ -273,7 +273,7 @@ class IkasanRuntimeImportTest {
         assertThat(mapped.review()).noneMatch(line -> line.contains("configuration fields"));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void verifiedRuntimeDefaultsDoNotNeedReviewButRemainInProvenance(String pack) throws Exception {
         var input = topology(pack);
         var config = configuration();
@@ -294,7 +294,7 @@ class IkasanRuntimeImportTest {
         assertThat(mismatched.review().toString()).contains("cronExpressions", "passthroughProperties", "persistentRecovery", "recoveryTolerance");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void changedDefaultsUnknownEmptyValuesAndWrongTypesStillNeedReview(String pack) throws Exception {
         var input = topology(pack);
         var config = configuration();
@@ -318,7 +318,7 @@ class IkasanRuntimeImportTest {
         assertThat(wrongTypes.review().toString()).contains("configuration fields not applied: persistentRecovery, recoveryTolerance");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void ftpDefaultsAreQuietButChangedUnsupportedSettingsStillNeedReview(String pack) throws Exception {
         var input = topology(pack);
         var flow = (ObjectNode) input.path("flows").get(0);
@@ -350,7 +350,7 @@ class IkasanRuntimeImportTest {
                 .contains("configuration fields not applied: provideRelativePath");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void xmlRuntimeClassAndConfigurationAreRecognisedWithoutGuessingInputClass(String pack) throws Exception {
         var input = topology(pack);
         var flow = (ObjectNode) input.path("flows").get(0);
@@ -547,7 +547,7 @@ class IkasanRuntimeImportTest {
         assertThat(JSON.readTree(result.studioJson()).path("flows").get(0).path("consumer").has("cronExpression")).isFalse();
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void importsDevNullWithBuilderConstructionAndRetainsItAfterSaving(String pack) throws Exception {
         for (String identity : java.util.List.of("org.ikasan.component.endpoint.util.producer.DevNull",
                 "org.ikasan.builder.component.endpoint.DevNullProducerBuilderImpl")) {
@@ -569,7 +569,7 @@ class IkasanRuntimeImportTest {
         }
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void similarlyNamedCustomProducerRemainsAnExistingUserImplementation(String pack) throws Exception {
         var input = topology(pack);
         ((ObjectNode) input.path("flows").get(0).path("flowElements").get(0))
@@ -634,7 +634,7 @@ class IkasanRuntimeImportTest {
         assertThat(result.review().toString()).contains("configuration fields not applied: remoteHost");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void sftpImportsFilterAndMoveSettingsWhileKeepingUnsupportedValuesVisible(String pack) throws Exception {
         var input = topology(pack);
         var config = configuration().put("implementingClass", "org.ikasan.endpoint.sftp.consumer.SftpConsumerConfiguration");
@@ -684,7 +684,7 @@ class IkasanRuntimeImportTest {
         assertThat(mismatched.review().toString()).contains("cronExpressions", "passthroughProperties", "persistentRecovery", "recoveryTolerance");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void sftpProducerDefaultsAreQuietButChangedValuesAndCredentialsRequireReview(String pack) throws Exception {
         var input = topology(pack);
         var flow = (ObjectNode) input.path("flows").get(0);
@@ -706,7 +706,7 @@ class IkasanRuntimeImportTest {
                 .contains("dontUseFileRename");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void localFileImportPreservesPatternsAndOnlyReviewsChangedUnmappedSettings(String pack) throws Exception {
         var input = topology(pack);
         var config = configuration().put("implementingClass",

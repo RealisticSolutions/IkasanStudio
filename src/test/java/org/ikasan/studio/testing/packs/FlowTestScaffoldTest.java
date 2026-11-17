@@ -11,7 +11,7 @@ import java.io.StringReader;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FlowTestScaffoldTest {
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void mapMessageFixturesFollowTheInitialJmsContract(String version) throws Exception {
         var flow = org.ikasan.studio.core.TestFixtures.getEventGeneratingConsumerCustomConverterDevNullProducerFlow(version);
         var module = org.ikasan.studio.core.TestFixtures.getMyFirstModuleIkasanModule(version, java.util.List.of(flow));

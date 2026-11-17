@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("packs")
 class RuntimeImportConfigurationCoverageTest {
     @ParameterizedTest
-    @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void everyAuditedRuntimeFieldHasAnExplicitDispositionAndCompatibleMapping(String pack) throws Exception {
         JsonNode inventory;
         try (var input = getClass().getResourceAsStream("/studio/runtime-import/configuration-fields.json")) {

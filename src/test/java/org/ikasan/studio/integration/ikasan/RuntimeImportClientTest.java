@@ -121,7 +121,7 @@ class RuntimeImportClientTest {
         return new String[]{module.toString(), configs.toString()};
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void restOnlyJndiMapsSurviveImportReloadAndGenerationWithoutDefaultOverrides(String pack) throws Exception {
         var fixture = jmsDocuments(pack);
         withServer(exchange -> respond(exchange, 200,
@@ -160,7 +160,7 @@ class RuntimeImportClientTest {
         });
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void invalidJndiMapsAndMismatchedClassesRemainUnappliedAndFlagged(String pack) throws Exception {
         var fixture = jmsDocuments(pack);
         var json = new com.fasterxml.jackson.databind.ObjectMapper();

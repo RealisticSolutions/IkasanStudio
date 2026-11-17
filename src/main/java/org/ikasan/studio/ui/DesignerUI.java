@@ -63,8 +63,10 @@ public class DesignerUI implements Disposable {
     public DesignerUI(Project project) {
         this.project = project;
         this.initialisationService = project.getService(StudioProjectInitialisationService.class);
-        this.initialisationPanel = new StudioInitialisationPanel(initialisationService::start, initialisationService::restoreModelBackup);
-        project.getMessageBus().connect(this).<StudioProjectInitialisationService.Listener>subscribe(
+        this.initialisationPanel = new StudioInitialisationPanel(initialisationService::start,
+                initialisationService::restoreModelBackup,
+                () -> org.ikasan.studio.intellij.metapack.RepairModelAction.review(project));
+        project.getMessageBus().connect(this).subscribe(
                 StudioProjectInitialisationService.Listener.TOPIC,
                 this::initialisationStateChanged);
         project.getService(UiContext.class).setViewHandlerFactory(new ViewHandlerCache(this.project));

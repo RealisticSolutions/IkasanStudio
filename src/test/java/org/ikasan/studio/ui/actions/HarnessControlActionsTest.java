@@ -43,14 +43,6 @@ class HarnessControlActionsTest {
     }
 
 
-    /**
-     * Start and Stop are independent, always-available actions now (see HarnessControlActions javadoc) - there
-     * is no "believed running" state left to track, so unlike the old single-toggle button there is nothing to
-     * assert about icon/text swapping. What matters is that isAvailable() reflects the model (already covered
-     * above via hasHarnesses) and that both actions are safe to invoke regardless of the harness's actual state
-     * - exercised here via the underlying TestFtpServerService directly (StartTestFtpServerAction/
-     * StopTestFtpServerAction already have their own dedicated tests for the full click-to-message behaviour).
-     */
     @Test
     void startAndStopActionsAreIndependentlyAvailableRegardlessOfRunningState() throws Exception {
         Project project = mock(Project.class);
@@ -63,6 +55,29 @@ class HarnessControlActionsTest {
         assertThat(actions.isAvailable()).isTrue();
         assertThat(actions.startAction()).isNotNull();
         assertThat(actions.stopAction()).isNotNull();
+    }
+
+    @Test
+    void runningIndicatorsUseOnlyThisProjectsCachedServiceState() {
+        Project project = mock(Project.class);
+        var ftp = mock(org.ikasan.studio.intellij.runtime.TestFtpServerService.class);
+        var sftp = mock(org.ikasan.studio.intellij.runtime.TestSftpServerService.class);
+        var mail = mock(TestMailServerSessionService.class);
+        when(project.getService(org.ikasan.studio.intellij.runtime.TestFtpServerService.class)).thenReturn(ftp);
+        when(project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class)).thenReturn(sftp);
+        when(project.getService(TestMailServerSessionService.class)).thenReturn(mail);
+        var actions = new HarnessControlActions(project);
+        assertThat(actions.runningHarnesses()).isEmpty();
+        when(ftp.isRunning()).thenReturn(true);
+        when(mail.hasAnyOwnedListening()).thenReturn(true);
+        assertThat(actions.runningHarnesses()).containsExactly("FTP", "SMTP");
+        when(sftp.isRunning()).thenReturn(true);
+        assertThat(actions.runningHarnesses()).containsExactly("FTP", "SFTP", "SMTP");
+        when(ftp.isRunning()).thenReturn(false);
+        when(mail.hasAnyOwnedListening()).thenReturn(false);
+        assertThat(actions.runningHarnesses()).containsExactly("SFTP");
+        when(project.isDisposed()).thenReturn(true);
+        assertThat(actions.runningHarnesses()).isEmpty();
     }
 
     @Test

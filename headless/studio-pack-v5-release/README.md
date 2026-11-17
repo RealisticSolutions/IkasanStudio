@@ -12,9 +12,7 @@ The complete library/templates were carried forward from the V5 snapshot adapter
 verified separately against released dependencies; no runtime dependency is silently downgraded. Revision 1.0.1 declares the tested ActiveMQ
 client/broker 6.3.3 security override; H2 continues to follow the Ikasan core baseline.
 
-The old `studio-pack-v5` / `V5.0.1-SNAPSHOT` remains an opt-in compatibility pack for existing
-snapshot models. It is not an alias for V5.1.0, and existing projects are not silently relabelled
-or upgraded. Automatic version-migration choices remain the established V3/V4 paths.
+The unused V5.0.1-SNAPSHOT pack and its optional bundled payload have been removed. V5.1.0 is the sole built-in Ikasan 5 pack. Automatic version-migration choices remain the established V3/V4 paths.
 
 ## Authoring and verification
 

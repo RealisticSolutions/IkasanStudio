@@ -20,10 +20,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class OutputTextSupportTemplateTest {
     @TempDir Path root;
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT"}) @Timeout(30)
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"}) @Timeout(30)
     void convertsContentAndRejectsUnsafeFallbacks(String version) throws Exception {
-        Path templates = version.equals("V5.0.1-SNAPSHOT")
-                ? Path.of("headless/studio-pack-v5/src/main/resources/studio/metapack", version, "templates/org/ikasan/studio/generator")
+        Path templates = version.equals("V5.1.0")
+                ? Path.of("headless/studio-pack-v5-release/src/main/resources/studio/metapack", version, "templates/org/ikasan/studio/generator")
                 : Path.of("src/main/resources/studio/metapack", version, "templates/org/ikasan/studio/generator");
         Path source = root.resolve("OutputTextSupport.java");
         Files.writeString(source, Files.readString(templates.resolve("outputTextSupportTemplate_en.ftl")));

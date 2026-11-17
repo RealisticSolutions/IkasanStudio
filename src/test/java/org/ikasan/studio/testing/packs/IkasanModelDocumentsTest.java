@@ -23,7 +23,7 @@ class IkasanModelDocumentsTest {
         return Files.readString(Path.of("src/test/resources/org/ikasan/studio", name));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void legacyXmlDocumentsWithoutNativeConfigurationRemainReadable(String pack) throws Exception {
         var xml = org.ikasan.studio.core.model.ikasan.instance.FlowElement.flowElementBuilder()
                 .componentMeta(org.ikasan.studio.core.metapack.ComponentLibrary.getIkasanComponentByKeyMandatory(pack, "Object To XML String Converter"))
@@ -76,6 +76,22 @@ class IkasanModelDocumentsTest {
         nativeXml.put("configurationId", "missing-explicit-record");
         assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(document.toString(), "dangling legacy XML configuration", false))
                 .hasMessageContaining("Missing configuration");
+    }
+
+    @Test void unavailablePackReportsRequiredIdentityWithoutClaimingTheJsonIsMalformed() throws Exception {
+        ObjectNode saved = (ObjectNode) json.readTree(ModelTemplate.create(
+                ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "legacy", false)));
+        ((ObjectNode) saved.get("studio")).put("metaPack", "V5.0.1-SNAPSHOT");
+        ((ObjectNode) saved.get("studio")).put("metaPackRevision", "0.1.0-SNAPSHOT");
+        ((ObjectNode) saved.get("module")).put("ikasanVersion", "5.0.1-SNAPSHOT");
+        var original = saved.deepCopy();
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(saved.toString(), "model.json", false))
+                .hasMessageContaining("requires meta-pack V5.0.1-SNAPSHOT at revision 0.1.0-SNAPSHOT")
+                .hasMessageContaining("unavailable or invalid")
+                .hasMessageNotContaining("not valid JSON");
+        assertThat(saved).isEqualTo(original);
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson("{broken", "model.json", false))
+                .hasMessageContaining("not valid JSON");
     }
 
     @Test void savedDocumentsLockTheirPackRevisionAndOldDocumentsAcquireALockOnSave() throws Exception {
@@ -217,7 +233,7 @@ class IkasanModelDocumentsTest {
         assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(docs.toString(), "test", false)).hasMessageContaining("value type");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void omittedRuntimeValuesStayUnsetAcrossImportSaveReloadAndGeneration(String pack) throws Exception {
         var topology = json.createObjectNode().put("name", "Imported JMS").put("ikasanVersion", pack.substring(1));
         var flow = topology.putArray("flows").addObject().put("name", "Orders").put("flowStartupType", "AUTOMATIC");
@@ -295,7 +311,7 @@ class IkasanModelDocumentsTest {
                 .hasMessageContaining("Invalid configuration value type for priority");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.0.1-SNAPSHOT", "V5.1.0"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void recognisedWrapperVariationsNormalizeWithoutChangingSettingsOrInput(String pack) throws Exception {
         ObjectNode legacy = (ObjectNode) json.readTree(fixture("populated_module.json"));
         legacy.put("version", pack).put("applicationPackageName", "org.example.imported");
@@ -361,7 +377,7 @@ class IkasanModelDocumentsTest {
         assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("Unknown document metadata field unknownFutureMetadata");
         studio.remove("unknownFutureMetadata");
         studio.put("metaPack", "v4.1.3");
-        assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("selected meta-pack");
+        assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("requires meta-pack v4.1.3");
     }
 
     @Test void nativeExtensionsFollowRenamesAndStayOutOfStudioProperties() throws Exception {

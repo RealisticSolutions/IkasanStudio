@@ -11,17 +11,14 @@ This standalone Gradle build uses Java 17 and Maven libraries only. Running it d
 | `org.ikasan.studio:studio-test-kit:0.1.0-SNAPSHOT` | Pack validation/rendering helpers and a reusable JUnit Jupiter contract | Generator and JUnit Jupiter API |
 | `org.ikasan.studio:studio-pack-v3:0.1.0-SNAPSHOT` | V3.3.9 descriptors, templates and images | None |
 | `org.ikasan.studio:studio-pack-v4:0.1.0-SNAPSHOT` | V4.1.6 descriptors, templates and images | None |
-| `org.ikasan.studio:studio-pack-v5-release:1.0.0` | V5.1.0 released descriptors, templates and images; generated applications use JDK 25 | None |
+| `org.ikasan.studio:studio-pack-v5-release:1.0.7` | V5.1.0 released descriptors, templates and images; generated applications use JDK 25 | None |
 | `org.ikasan.studio:studio-bundled-packs:0.1.0-SNAPSHOT` | Bundle selecting exact official pack revisions | All three released pack artifacts |
 
 These are initial development artifact versions, independent of the plugin version. Nothing is automatically published remotely. Each official pack takes its artifact version from its own `metapack.json`. The bundled-packs artifact has no pack resources; its dependency metadata selects all three exact released pack revisions. See [Independent pack releases](../docs/IndependentMetaPackArtifacts.md) for versioning and release commands.
 
 The generator has no dependency on either the test kit or bundled packs. The test kit has no production dependency on bundled packs. Consumers supply their own pack resources on the application classpath using the existing `studio/metapack/<id>/...` structure. Resource discovery merges directories across engine and pack JARs.
 
-With `-PstudioIncludeSnapshotPacks=true`, `studio-bundled-packs` also selects the
-[Ikasan 5 development pack](studio-pack-v5/README.md) for fresh IDE sandbox launches.
-Its Java 26 runtime verification and snapshot readiness gates remain separate from
-released V3/V4/V5 compatibility claims. V5 migration choices remain disabled.
+Ikasan 5 uses the released V5.1.0 pack with JDK 25. The unused snapshot module and its inclusion flag have been removed. V5 migration choices remain disabled.
 
 ## Source ownership
 

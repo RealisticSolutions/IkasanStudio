@@ -214,11 +214,17 @@ public class ComponentIO {
         // UTF-8 files decoded to String (and pasted text) can retain a leading byte-order mark.
         // Strip only that prefix; U+FEFF inside a JSON string is legitimate model content.
         if (json != null && json.startsWith("\uFEFF")) json = json.substring(1);
+        final JsonNode parsed;
+        try {
+            parsed = MAPPER.readTree(json);
+        } catch (JsonProcessingException e) {
+            throw new StudioBuildException("The serialised data in [" + source + "] is not valid JSON: " + e.getMessage(), e);
+        }
         final JsonNode root;
         try {
-            root = IkasanModelDocuments.toLegacy(MAPPER.readTree(json));
+            root = IkasanModelDocuments.toLegacy(parsed);
         } catch (java.io.IOException e) {
-            throw new StudioBuildException("The serialised data in [" + source + "] is not valid JSON: " + e.getMessage(), e);
+            throw new StudioBuildException("The serialised data in [" + source + "] cannot be loaded safely: " + e.getMessage(), e);
         }
         if (root == null || !root.isObject()) {
             throw new StudioBuildException("The serialised data in [" + source + "] must be a JSON object");

@@ -119,10 +119,7 @@ The root [settings.gradle.kts](settings.gradle.kts) includes `headless/` as a co
 
 Meta-pack sources live under `src/main/resources/studio/metapack/`. The bundled packs are `V3.3.9`, `V4.1.6` and `V5.1.0` (the latter under `headless/studio-pack-v5-release/src/main/resources/`); each supplies `metapack.json`, a component library (JSON descriptors and icons), and version-specific FreeMarker templates. Shared schemas live under `schema/`. Historic VHS and older-version references do not identify currently bundled packs.
 
-An opt-in Ikasan 5 development pack lives in `headless/studio-pack-v5/src/main/resources/studio/metapack/V5.0.1-SNAPSHOT`.
-Its generated projects target Java 25 LTS and it appears in the IDE version selector when **Allow snapshot meta-packs** is enabled in Studio settings. Migration choices remain V3/V4 only.
-See [V5 development evidence and gates](headless/studio-pack-v5/README.md) before changing its status;
-the plugin embeds it as optional resource-only data and activates it after opt-in and IDE restart. Normal plugin/CLI classpaths contain the released V3/V4/V5 packs; previously activated resources remain available for existing projects after opt-out. See [snapshot meta-packs](docs/SnapshotMetaPacks.md). This is not Marketplace release certification.
+Ikasan 5 uses the released **V5.1.0** pack and JDK 25. The unused 5.0.1 snapshot pack and bundled activation payload have been removed. Independently installed experimental packs can still be selected with **Allow snapshot meta-packs**; see [snapshot meta-packs](docs/SnapshotMetaPacks.md). Migration choices remain V3/V4 only. This is not Marketplace release certification.
 
 `headless/studio-pack-v3` and `headless/studio-pack-v4` package the respective resource directories; `headless/studio-pack-v5-release` packages the released Ikasan 5.1.0 adapter; `studio-bundled-packs` selects all three exact revisions. The independent Maven example `ikasan-studio-ancillary/ikasan5-metapack` uses `ExampleIkasan5` so it can coexist with the bundled pack. The root plugin excludes these resources from its own resource source set to avoid duplicate packaging. Follow the [meta-pack authoring guide](src/main/resources/studio/metapack/METAPACK.md), [compliance requirements](src/main/resources/studio/metapack/METAPACK_COMPLIANCE.md), and [independent pack release guide](docs/IndependentMetaPackArtifacts.md) when changing or adding packs.
 
@@ -234,4 +231,4 @@ Keep user-facing terminology and screenshots aligned with the supported plugin a
 
 ### Ikasan 5 Java baseline
 
-New Ikasan 5 work targets JDK 25 LTS. Do not use Java 26-specific APIs, language features or preview features. Released V5.1.0 and the independent ExampleIkasan5 pack target Java 25; plugin and pack-authoring compilation remains Java 17. The retained historical 5.0.1 snapshot and dated Java 26 evidence do not establish the baseline for new work.
+New Ikasan 5 work targets JDK 25 LTS. Do not use Java 26-specific APIs, language features or preview features. Released V5.1.0 and the independent ExampleIkasan5 pack target Java 25; plugin and pack-authoring compilation remains Java 17. Dated Java 26 evidence does not establish the baseline for new work.

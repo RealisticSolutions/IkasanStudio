@@ -57,6 +57,35 @@ public class CanvasPanel extends JBPanel implements Disposable {
     // read as unambiguously coloured. RestartIcon paints itself straight from the button's own enabled state,
     // so it never depends on IconLoader's disabled-icon derivation of a baked two-tone icon.
     private static final Icon RESTART_ICON = new RestartIcon();
+    private static final Icon RUNNING_HARNESS_ICON = new Icon() {
+        @Override public int getIconWidth() { return AllIcons.Actions.Execute.getIconWidth(); }
+        @Override public int getIconHeight() { return AllIcons.Actions.Execute.getIconHeight(); }
+        @Override public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            AllIcons.Actions.Execute.paintIcon(component, graphics, x, y);
+            Graphics2D copy = (Graphics2D) graphics.create();
+            try {
+                copy.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int size = JBUI.scale(6);
+                int left = x + getIconWidth() - size;
+                copy.setColor(component.getBackground());
+                copy.fillOval(left - JBUI.scale(1), y, size + JBUI.scale(2), size + JBUI.scale(2));
+                copy.setColor(ThemeAwareColors.getSuccessColor());
+                copy.fillOval(left, y + JBUI.scale(1), size, size);
+            } finally {
+                copy.dispose();
+            }
+        }
+    };
+
+    static void updateHarnessState(JButton start, JButton stop, java.util.List<String> running) {
+        boolean active = !running.isEmpty();
+        start.setIcon(active ? RUNNING_HARNESS_ICON : AllIcons.Actions.Execute);
+        String status = active ? StudioBundle.message("tooltip.HarnessesRunning", String.join(", ", running)) : "";
+        start.setToolTipText(StudioBundle.message("tooltip.StartHarnesses") + status);
+        stop.setToolTipText(StudioBundle.message("tooltip.StopHarnesses") + status);
+        start.getAccessibleContext().setAccessibleDescription(start.getToolTipText());
+        stop.getAccessibleContext().setAccessibleDescription(stop.getToolTipText());
+    }
 
     /** See the RESTART_ICON field comment for why this exists instead of AllIcons.Actions.Restart. */
     private static final class RestartIcon implements Icon {
@@ -253,8 +282,7 @@ public class CanvasPanel extends JBPanel implements Disposable {
 
     /**
      * The harness group's own Start/Stop buttons are deliberately always enabled (see HarnessControlActions) -
-     * only the group's overall visibility still needs polling, since whether the model even references a test
-     * harness at all can change as the user edits the canvas.
+     * refresh visibility and cached running indicators without changing the available actions.
      */
     private void refreshHarnessGroupVisibility(HarnessControlActions harnessActions) {
         if (project.isDisposed()) return;
@@ -279,6 +307,7 @@ public class CanvasPanel extends JBPanel implements Disposable {
             var properties = project.getService(UiContext.class).getPropertiesPanel();
             if (properties != null) properties.refreshHarnessOverrideStatus();
         }
+        updateHarnessState(startHarnessButton, stopHarnessButton, harnessActions.runningHarnesses());
         boolean hasServerControls = harnessActions.isAvailable();
         startHarnessButton.setVisible(hasServerControls);
         stopHarnessButton.setVisible(hasServerControls);

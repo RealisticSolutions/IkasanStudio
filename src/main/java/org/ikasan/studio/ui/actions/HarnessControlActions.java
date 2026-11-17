@@ -53,6 +53,19 @@ public final class HarnessControlActions {
         return hasHarnesses(currentModule());
     }
 
+    /** Project-owned services only; no socket probes or other blocking work on the EDT. */
+    public List<String> runningHarnesses() {
+        if (project.isDisposed()) return List.of();
+        var running = new java.util.ArrayList<String>();
+        var ftp = project.getService(org.ikasan.studio.intellij.runtime.TestFtpServerService.class);
+        var sftp = project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class);
+        var mail = project.getService(TestMailServerSessionService.class);
+        if (ftp != null && ftp.isRunning()) running.add("FTP");
+        if (sftp != null && sftp.isRunning()) running.add("SFTP");
+        if (mail != null && mail.hasAnyOwnedListening()) running.add("SMTP");
+        return List.copyOf(running);
+    }
+
     static boolean hasHarnesses(Module module) {
         return module != null && (!TestFtpServerLinks.findLinks(module).isEmpty()
                 || !TestMailServerLinks.findLinks(module).isEmpty()

@@ -142,7 +142,7 @@ Studio validates the candidate and existing model, writes a temporary sibling an
 1. Copy the project, including the original model and backups, before manual repairs. Stop the module and avoid concurrent Studio sessions writing the same project.
 2. Open Studio. If the model cannot load safely, the recovery view preserves the original and offers only backups that validate.
 3. Select the desired validated backup. Studio restores it and preserves the rejected model as `model.json.rejected.<timestamp>.<id>`.
-4. If no valid backup exists, restore the model from version control or repair a copy, then use **Reload from Disk**. The normal toolbar reload control is available through advanced controls in **Settings → Tools → Ikasan Studio**.
+4. For a missing or mismatched pack, use **Review model repair…** in the recovery view (also under **Tools → Ikasan Studio**). Review the proposed pack, revision, runtime and JDK before applying. If no validated repair is available, restore the model from version control or repair a copy, then use **Reload from Disk**. The normal toolbar reload control is available through advanced controls in **Settings → Tools → Ikasan Studio**.
 5. Inspect the restored flows, component settings and selected pack before generation. Review generated file diffs and run application tests. Restoring a model does not automatically restore matching developer Java, external databases or delivered messages.
 
 For a failed version migration, follow [migration snapshot restoration](IkasanVersionMigration.md#restore-versus-migrate-back). Do not replace only the model while leaving the project POM and generated Java on another Ikasan version.
@@ -155,3 +155,22 @@ Models, adjacent backups and migration snapshots can contain entered credentials
 New saves of configured document-format models include `studio.metaPackRevision`. If the installed pack has another revision, Studio preserves the file and blocks loading/saving rather than silently changing its metadata and generation templates. Older documents without a lock are still accepted and gain one on save.
 
 Restore the required external revision through **Tools → Ikasan Studio → Manage Meta-Packs…** and restart, or review **Adopt Installed Meta-Pack Revision…** to explicitly update the model lock. Adoption validates the model with the installed revision, keeps the original as `model.json.bak.1`, and requires a fresh review if the file changes. Regenerate, inspect and test application output afterwards. A model backup locked to an unavailable revision also needs that revision restored. See [meta-pack lifecycle and locks](CustomMetaPackHandover.md#project-revision-locks-and-deliberate-adoption).
+
+## Reviewed model repair
+
+**Review Model Repair…** handles an installed pack revision mismatch and the retired
+V5.0.1-SNAPSHOT → V5.1.0 transition. The preview validates the entire proposed model
+and renders application templates in memory before offering an Apply confirmation.
+It changes only the model’s pack ID, revision and runtime identity as needed; flows,
+component configuration, provenance and developer code are preserved.
+
+Stop the module and save open project files before applying. The original model is
+retained exactly as `model.json.bak.1`; a stale review or failed validation prevents
+replacement. Studio reloads the repaired model before allowing normal saves. Then
+regenerate code, reload Maven and build/test against the selected runtime and JDK.
+The preview checks model/template compatibility, not runtime delivery or Java compilation.
+
+Repair does not infer arbitrary version migrations, replace missing custom packs,
+or guess fixes for malformed JSON or invalid component settings. Restore a validated
+backup or install the required external pack for those cases. Existing explicit
+revision adoption remains available under Tools.

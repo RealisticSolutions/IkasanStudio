@@ -43,11 +43,10 @@ public class SnapshotMetaPacksHeavyTest extends HeavyPlatformTestCase {
         }
     }
 
-    public void testOptOutHidesSnapshotSelectionsButKeepsExistingPackUsable() throws Exception {
-        assertTrue(ComponentLibrary.getMetapackList(true).contains("V5.0.1-SNAPSHOT"));
+    public void testRetiredSnapshotIsNotBundled() {
+        assertFalse(ComponentLibrary.getMetapackList(true).contains("V5.0.1-SNAPSHOT"));
         assertFalse(ComponentLibrary.getMetapackList(false).contains("V5.0.1-SNAPSHOT"));
-        assertTrue(ComponentLibrary.getMetapackList(false).containsAll(java.util.List.of("V3.3.9", "V4.1.6")));
-        assertEquals("25", ComponentLibrary.getMetaPackManifest("V5.0.1-SNAPSHOT").javaVersion());
+        assertNull(getClass().getClassLoader().getResource("studio/development-packs/studio-pack-v5.jar"));
     }
 
     public void testReleasedIkasan5IsAvailableWithoutSnapshotOptIn() throws Exception {
@@ -62,7 +61,7 @@ public class SnapshotMetaPacksHeavyTest extends HeavyPlatformTestCase {
         var released = new org.ikasan.studio.core.metapack.model.MetaPackManifest(
                 2, "custom-pack", "4.1.6", "17", null, null, "0.1.0-SNAPSHOT", 1);
         var snapshot = new org.ikasan.studio.core.metapack.model.MetaPackManifest(
-                2, "custom-pack", "5.0.1-SNAPSHOT", "25", null, null, "1.0.0", 1);
+                2, "custom-pack", "9.0.0-SNAPSHOT", "25", null, null, "1.0.0", 1);
         assertFalse(ComponentLibrary.isSnapshotRuntime(released));
         assertTrue(ComponentLibrary.isSnapshotRuntime(snapshot));
     }

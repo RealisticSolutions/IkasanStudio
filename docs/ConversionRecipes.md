@@ -81,7 +81,7 @@ Use **Payload To Map Converter** for the standard Ikasan file-transfer mapping. 
 Studio generates the real `org.ikasan.component.converter.filetransfer.PayloadToMapConverter`;
 no handwritten stub or extra configuration is required. The Converter type supplies the
 `ikasan-component-converter` dependency. This component is available in V3.3.9, V4.1.6
-and the V5.0.1-SNAPSHOT development pack.
+and V5.1.0.
 
 Ikasan decodes content using the runtime JVM's default charset and copies attributes
 after `content` and `id`, so attributes with those names override the original entries.
@@ -93,7 +93,7 @@ subsequent transport conversion separately.
 
 Use **JMS Map Message To Payload Converter** to convert a JMS `MapMessage` into
 `org.ikasan.filetransfer.Payload`, for example before an FTP/SFTP producer.
-It is available in V3.3.9, V4.1.6 and the V5.0.1-SNAPSHOT development pack.
+It is available in V3.3.9, V4.1.6 and V5.1.0.
 V3 uses `javax.jms.MapMessage`; V4 and V5 use `jakarta.jms.MapMessage`.
 
 The configurable fields are:
