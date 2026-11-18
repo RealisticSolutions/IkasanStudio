@@ -9,7 +9,7 @@ Ikasan Studio Community is the Realistic Solutions community fork of Ikasan Stud
 
 ## Ikasan Studio Community — Public Beta
 
-Build applications for the Ikasan Enterprise Integration Platform (ESB), with support for Ikasan 3.3.9 and 4.1.6.
+Build applications for the Ikasan Enterprise Integration Platform (ESB), with support for Ikasan 3.3.9, 4.1.6 and 5.1.0.
 
 - Compose flows in a graphical editor and configure their components.
 - Generate Java, Maven and application configuration while keeping business implementations in developer-owned source files.
@@ -20,7 +20,7 @@ This public beta is intended for evaluation and feedback. Review the getting-sta
 
 ### Requirements
 
-Generated applications require Java 11 for Ikasan 3.3.9 or Java 17 for Ikasan 4.1.6. See supported versions below for IDE compatibility.
+Generated applications require Java 11 for Ikasan 3.3.9, Java 17 for Ikasan 4.1.6 or Java 25 for Ikasan 5.1.0. See supported versions below for IDE compatibility.
 
 ### Optional AI integration
 
