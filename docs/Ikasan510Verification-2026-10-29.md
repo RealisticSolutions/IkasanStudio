@@ -1,6 +1,6 @@
 # Ikasan 5.1.0 pack verification — 29 October 2026
 
-This is automated evidence for the current candidate, not Marketplace release certification.
+This is dated Ikasan runtime evidence, not verification of the current plugin candidate or Marketplace certification. See the [beta.3 audit](ReleaseAudit-2026-11-18.md) for current plugin evidence. The snapshot pack and bundled activation payload described in the initial record have since been removed; use V5.1.0 with JDK 25.
 The pack update is implemented; the full runtime gate is **not green** because the released
 runtime still fails clean-rollback checks. The failures are retained, not suppressed or patched.
 

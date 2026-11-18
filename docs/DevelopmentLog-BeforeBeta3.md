@@ -254,7 +254,7 @@ This is the detailed development log accumulated before the beta.3 candidate. It
 
 Initial 1.0.0 release in preparation. These notes describe the planned release scope;
 release verification and outstanding checks are tracked separately in
-[Release-candidate verification](docs/ReleaseCandidateVerification.md).
+[Release-candidate verification](ReleaseCandidateVerification.md).
 
 ### Fixed
 

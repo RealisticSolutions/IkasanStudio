@@ -11,7 +11,7 @@ The generator and metadata tests have two owners under `src/test/java/org/ikasan
 | Suite | Responsibility | Inputs |
 | --- | --- | --- |
 | `engine` | Template loading, include isolation, rendering, diagnostics, schema/metadata validation and help composition | Small authored synthetic templates, TestV1 metadata and in-memory descriptors |
-| `packs` | Official component libraries, dependency contracts, namespace choices, generated Java/properties and official catalogue contents | Explicit V3.3.9/V4.1.6 matrix and versioned expected output |
+| `packs` | Official component libraries, dependency contracts, namespace choices, generated Java/properties and official catalogue contents | Explicit V3.3.9/V4.1.6 shared matrix, separate V5.1.0 pack contracts and versioned expected output |
 
 ### What each test layer establishes
 
@@ -74,7 +74,7 @@ Run one engine class, one pack class, or one pack test method:
 ./gradlew test --tests 'org.ikasan.studio.testing.packs.FlowTemplateTest.testCreateFlowWith_brokerComponent'
 ```
 
-Parameterized pack tests run all versions supplied by their method source. There is currently no Gradle option to select only V3 or only V4. The shared `PackExpectations.metaPacksToTest()` matrix includes V3.3.9 and V4.1.6; some other pack tests explicitly select versions or inspect every shipped pack. Do not narrow the shared matrix to make a failing version disappear.
+Parameterized pack tests run all versions supplied by their method source. There is currently no Gradle option to select only V3 or only V4. The shared `PackExpectations.metaPacksToTest()` matrix includes V3.3.9 and V4.1.6; some other pack tests explicitly select versions or inspect every shipped pack. V5.1.0 has separate contracts in `headless/studio-pack-v5-release` and version-aware tests; the shared V3/V4 matrix alone does not establish V5 coverage. Do not narrow the shared matrix to make a failing version disappear.
 
 `--tests` filters and `studioTestSuite` tag filters are combined. Avoid selecting an engine class while leaving `studioTestSuite=packs` in your command or Gradle properties. The supported suite values are `all`, `engine` and `packs`; an unknown value fails configuration. To explicitly request all suites:
 

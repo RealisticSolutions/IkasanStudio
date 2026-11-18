@@ -1,5 +1,7 @@
 # Ikasan 5 merge verification — 20 October 2026
 
+> Historical evidence for the date in this report. The 5.0.1 snapshot pack and its bundled activation payload have since been removed. Current bundled Ikasan 5 support is V5.1.0 on JDK 25; see [Supported versions](SupportedVersions.md) and the [beta.3 audit](ReleaseAudit-2026-11-18.md). Old build flags and Java 26 instructions below are not current setup guidance.
+
 The Ikasan 5 feature branch was rebased without conflicts onto `origin/main`
 (`6fa91079`). Shared Studio fixes and the isolated V5 development infrastructure
 are suitable for integration. This is not V5 runtime or Marketplace certification.
@@ -47,8 +49,9 @@ The overall gate **FAILED** on rollback fixtures: 10 tests, six failures, no ski
 
 Delivery recovered in these cases, but transaction cleanup was not clean. These
 failures remain V5 release blockers; neither assertions nor runtime sources were
-changed to suppress them. See the [V5 development guide](../headless/studio-pack-v5/README.md)
-for existing investigation and readiness criteria.
+changed to suppress them. The snapshot development guide has since been retired.
+For the current baseline, investigation and readiness criteria, see the
+[released V5 pack guide](../headless/studio-pack-v5-release/README.md).
 
 Local raw evidence, including logs, dependency trees and Surefire reports, is under
 `headless/studio-pack-v5/build/verification/20261020T200913.455775Z/`.

@@ -44,13 +44,13 @@ Ikasan Studio is open source under the [BSD 3-Clause License](https://github.com
 
 **Release candidate:** Ikasan Studio Community **1.0.0-beta.3** is being prepared. See the [candidate audit](docs/ReleaseAudit-2026-11-18.md).
 
-**Builds:** Compare [beta and nightly features](docs/Features.md). [Nightly ZIPs](downloads/) are updated in this repository and installed through IntelliJ’s **Install Plugin from Disk**.
+**Candidate features:** See the [beta.3 feature matrix](docs/Features.md). Obtain the reviewed candidate ZIP from the [community releases](https://github.com/RealisticSolutions/IkasanStudio/releases) or build it locally; `downloads/` also contains historical artifacts.
 
 [Get started](#get-started) · [Feature matrix](docs/Features.md) · [Documentation](#documentation) · [Build and contribute](#build-and-contribute) · [Report a problem](#report-a-problem)
 
 ## What you can do
 
-See the [complete feature matrix](docs/Features.md) for capabilities grouped by function, with **Beta** and **Nightly** availability. [Nightly ZIPs](downloads/) are updated in this repository; The beta.3 candidate includes Ikasan 5.1.0 and the latest source-import workflow.
+See the [complete feature matrix](docs/Features.md) for capabilities grouped by function. The beta.3 candidate includes Ikasan 5.1.0 and the latest source-import workflow.
 
 - Design flows with a component palette, property editor and visual connections in IntelliJ's main editor area.
 - Generate application code and configuration while keeping business logic in developer-owned source files.
@@ -97,7 +97,7 @@ See [Supported versions](docs/SupportedVersions.md) and [Known limitations](docs
 
 ### Install and create a module
 
-1. Follow the [installation guide](docs/Installation.md) for Marketplace beta access or installation from a candidate ZIP. For nightly features, use the [GitHub ZIP](downloads/ikasanstudio-1.0.0-beta.1.zip) or [build the plugin](#build-and-contribute).
+1. Follow the [installation guide](docs/Installation.md) for the community Marketplace channel or installation from an approved candidate ZIP. To build the candidate locally, follow [build the plugin](#build-and-contribute).
 2. Create a **Maven Archetype** project using `org.ikasan.studio:ikasan-studio-project-archetype` and the version supplied for your candidate. If it is unavailable in your configured repositories, use the [manual archetype fallback](#manual-archetype-fallback).
 3. Allow Maven import and indexing to finish. Studio opens in an editor tab; select the appropriate Ikasan pack and configure the module.
 4. Add a flow, a consumer and the remaining components. Apply their properties, then use the **Regenerate Code** icon in the Module controls to generate from the current in-memory model.
@@ -137,7 +137,7 @@ Studio validates proposals and applies them according to its approval settings. 
 
 | Guide                                                                   | Read it for                                                                                  |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [Feature matrix](docs/Features.md)                                     | Capabilities by functional area, with beta/nightly availability                              |
+| [Feature matrix](docs/Features.md)                                     | Capabilities included in the beta.3 candidate by functional area                              |
 | [Getting started](docs/GettingStarted.md)                               | Create, configure, run and debug your first module                                           |
 | [Video tutorials](tutorials/README.md)                                  | Recommended viewing order for module development and Studio contribution                     |
 | [Generated verification baselines](docs/GeneratedVerification.md)       | Model-based checks and frozen baselines for migration comparisons                            |

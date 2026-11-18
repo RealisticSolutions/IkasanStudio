@@ -1,6 +1,6 @@
 # Ikasan Studio Community 1.0 Marketplace release plan
 
-Community identity, checkout evidence and outstanding first-beta decisions are tracked in
+Community identity, checkout evidence and the current beta.3 preparation are tracked in
 [Community beta preparation](CommunityBetaRelease.md). Realistic Solutions owns this fork’s release process.
 
 This is a phased plan for a public beta followed by 1.0, with dates driven by readiness. It complements the existing
@@ -18,7 +18,7 @@ The account and listing preparation work can start without delay, only release-q
 will be submitted.
 
 The first Marketplace upload must be manual; later updates can use Gradle publishing.
-Release candidates will use unique candidate versions such as `1.0.0-beta.1`, retaining `1.0.0` for the
+The current release candidate is `1.0.0-beta.3`; beta.2 was already used for a quick fix. Retain `1.0.0` for the
 final artifact. A non-default channel requires testers to add a repository in IntelliJ.
 [JetBrains publishing instructions](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html).
 
@@ -117,8 +117,7 @@ Provide the applicable privacy policy if personal data is collected, as required
 Manually upload the signed candidate, select the intended vendor/channel and Hidden flag,
 complete listing details and supply concise reviewer setup instructions with disposable test data.
 The community candidate workflow is manual and does not publish to GitHub or Marketplace.
-The first upload remains manual. If automated publishing is introduced later, the channel comes from `pluginVersion`,
-not the GitHub prerelease checkbox: `1.0.0` maps to default, `1.0.0-beta.1` to beta.
+For this community distribution, the channel comes from `marketplaceChannel` in `gradle.properties`, currently `default`. Neither a SemVer beta suffix nor the GitHub prerelease checkbox changes that setting. Preserve the existing listing and vendor when submitting beta.3.
 
 Every new plugin and update is reviewed. JetBrains gives no guaranteed review time and advises
 contacting Marketplace support if there is no response after 3–4 working days. Reserve a week

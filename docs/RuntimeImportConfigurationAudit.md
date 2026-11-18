@@ -1,5 +1,7 @@
 # Runtime import configuration audit — 12 November 2026
 
+> Historical evidence for the date in this report. The 5.0.1 snapshot pack and its bundled activation payload have since been removed. Current bundled Ikasan 5 support is V5.1.0 on JDK 25; see [Supported versions](SupportedVersions.md) and the [beta.3 audit](ReleaseAudit-2026-11-18.md). References below to the snapshot describe its historical state, not an available bundled pack.
+
 The audit covers all 12 concrete configuration classes declared by the bundled
 V3.3.9, V4.1.6, V5.1.0 and optional V5.0.1-SNAPSHOT component libraries. Generic
 developer implementations, custom packs, module/flow/invoker configuration and

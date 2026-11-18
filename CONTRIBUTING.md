@@ -57,7 +57,7 @@ To package while a sandbox IDE is running, use a separate sandbox directory, for
 - `headless/studio-generator/src/main/java/org/ikasan/studio/core/` contains framework-independent model, JSON, metadata, and generation logic.
 - `src/main/java/org/ikasan/studio/intellij/` contains IntelliJ lifecycle, editor, PSI, execution, settings and AI adapters; `src/main/java/org/ikasan/studio/ui/` contains Swing UI and view models.
 - `src/main/resources/studio/metapack/` contains version-specific component metadata, icons, and FreeMarker templates.
-- `headless/studio-pack-v3/` and `headless/studio-pack-v4/` package the official V3.3.9 and V4.1.6 resources; `studio-bundled-packs` selects their revisions and `studio-test-kit` provides reusable contracts.
+- `headless/studio-pack-v3/`, `headless/studio-pack-v4/` and `headless/studio-pack-v5-release/` package the official V3.3.9, V4.1.6 and V5.1.0 resources; `studio-bundled-packs` selects their revisions and `studio-test-kit` provides reusable contracts.
 - `native-mcp/` contains the optional IntelliJ MCP integration; `src/mcpAdapter/java/` contains the bundled Java adapter for manual client setup.
 - `ikasan-studio-ancillary/` contains the Maven archetype and IDE mediator projects.
 - `src/test/java/` contains automated tests.
