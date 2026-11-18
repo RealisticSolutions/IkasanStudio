@@ -1,14 +1,12 @@
 # Installing Ikasan Studio Community
 
-The public beta is being prepared. Until a Marketplace release is published, install an approved candidate ZIP or [build the plugin](../README.md#build-and-contribute). This guide does not imply that a listing is already available. See the [README release status](../README.md) and [supported versions](SupportedVersions.md).
+The **1.0.0-beta.3** candidate is being prepared; see its [verification audit](ReleaseAudit-2026-11-18.md). Install an approved candidate ZIP or [build the plugin](../README.md#build-and-contribute). See the [README release status](../README.md) and [supported versions](SupportedVersions.md).
 
 ## Marketplace releases
 
 Once published, use the official listing linked from this repository. Check the publisher, version and compatibility before installing, then restart IntelliJ if prompted.
 
-A release in Marketplace's **beta channel** is separate from its default channel. To access it, open **Settings → Plugins → gear → Manage Plugin Repositories**, add `https://plugins.jetbrains.com/plugins/beta/list`, then search for **Ikasan Studio Community** in the Marketplace tab and check the **Realistic Solutions** vendor. This repository exposes beta updates for other plugins too. Follow the listing's release instructions; a hidden preview may instead require a direct listing link from the maintainers.
-
-See JetBrains' [custom release channels](https://plugins.jetbrains.com/docs/marketplace/custom-release-channels.html) and [hidden plugins](https://plugins.jetbrains.com/docs/marketplace/hidden-plugin.html) documentation. These routes become useful only after the corresponding release has been published.
+The community distribution uses Marketplace's **default channel**, retaining the beta.2 configuration. The `beta` suffix in the version does not require adding a custom plugin repository. Search for **Ikasan Studio Community** and check the **Realistic Solutions** vendor. GitHub prerelease status is separate from Marketplace channel selection.
 
 ## Candidate ZIP or offline installation
 
@@ -18,6 +16,6 @@ Offline installation does not make project creation or builds offline: Maven dep
 
 ## Next steps
 
-Run IntelliJ with its supplied runtime. Install and select Java 11 for an Ikasan 3.3.9 application or Java 17 for an Ikasan 4.1.6 application; the project SDK is separate from the IDE runtime. Continue with [Your first module](GettingStarted.md), [known limitations](KnownLimitations.md) and the [video tutorials](../tutorials/README.md).
+Run IntelliJ with its supplied runtime. Install and select Java 11 for an Ikasan 3.3.9 application Java 17 for an Ikasan 4.1.6 application or Java 25 for an Ikasan 5.1.0 application; the project SDK is separate from the IDE runtime. Continue with [Your first module](GettingStarted.md), [known limitations](KnownLimitations.md) and the [video tutorials](../tutorials/README.md).
 
 Ikasan Studio is distributed under the [BSD 3-Clause License](../LICENSE.txt). Third-party dependencies retain their own licences and notices.

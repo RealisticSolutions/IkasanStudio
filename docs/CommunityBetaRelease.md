@@ -1,8 +1,13 @@
 # Realistic Solutions community beta preparation
 
 This checkout prepares **Ikasan Studio Community**, maintained by **Realistic Solutions**.
-Publication is not authorised by this preparation task. The community candidate workflow
-builds reviewable artifacts only; it does not create a public release or upload to Marketplace.
+The current candidate is **1.0.0-beta.3**, following the beta.2 quick-fix release.
+See the [18 November candidate audit](ReleaseAudit-2026-11-18.md) for current verification.
+The community candidate workflow builds reviewable artifacts only; it does not create a
+public release or upload to Marketplace. The Marketplace channel remains `default`.
+
+The dated preparation record below is historical evidence for beta.1, not certification
+of beta.3 or a statement that beta.1 is still awaiting its first submission.
 
 ## Starting point — 6 October 2026
 
