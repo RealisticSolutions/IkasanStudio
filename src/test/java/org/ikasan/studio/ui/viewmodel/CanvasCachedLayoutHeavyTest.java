@@ -42,8 +42,11 @@ public class CanvasCachedLayoutHeavyTest extends HeavyPlatformTestCase {
                 int statusRight = 24 + 14 + 6 + graphics.getFontMetrics(StudioUIUtils.getMainFont()).stringWidth("Recovering");
                 assertTrue("Server card must clear the status text and hover area at offset " + configured,
                         serverLeft >= statusRight + 12);
-                if (configured <= org.ikasan.studio.intellij.settings.IkasanStudioSettings.DEFAULT_FLOW_X_START_POINT)
-                    assertTrue("Default harness gutter should remain compact", serverLeft <= statusRight + 80);
+                // Compactness is a layout constraint, independent of the host's font metrics.
+                // Keep the font-based clearance check above to catch actual overlap.
+                int baseline = Math.max(configured,
+                        org.ikasan.studio.intellij.settings.IkasanStudioSettings.DEFAULT_FLOW_X_START_POINT);
+                assertTrue("Harness should add at most 110 pixels to the flow offset", left <= baseline + 110);
                 assertEquals("Idle layout preserves the configured offset", configured,
                         IkasanModuleViewHandler.flowXStartPoint(configured, false));
             }
