@@ -2,7 +2,7 @@
 
 Harnesses support local development. Start with a disposable project and test endpoints, apply **Update Code**, and restart the module whenever generated configuration changes. Actions are shown only for components and states that support them. Toolbar harness start/stop controls manage the module's FTP, local SFTP and mail test harnesses; they do not start a JMS broker or the application.
 
-A green badge on **Harness Start** indicates running services owned by this project. Hover over Start or Stop for the active FTP, SFTP and SMTP services. Both controls remain available during partial startup or after a failure; Start starts missing services and Stop stops the harnesses.
+A green badge on **Harness Start** indicates available harness services: this project’s running FTP/SFTP/SMTP servers, or an SMTP listener at the effective address used by its email components. Hover over Start or Stop for the service list; mail servers owned elsewhere are labelled **SMTP (shared/external)**. Availability does not grant ownership or permission to stop another project’s server. Both controls remain available during partial startup or after a failure; Start starts missing services and Stop stops the harnesses.
 
 ## Mix harness and configured connections
 
@@ -275,3 +275,15 @@ recovery state. Ikasan 3.3.9 and 4.1.6 currently hard-code `./scheduler-recovery
 scheduled-consumer factory. That directory remains in the working directory until Ikasan
 provides a configurable factory/builder option; Studio does not change the process working
 directory and thereby alter all relative application paths.
+
+### Stopping servers used by another project
+
+FTP and SFTP harness overrides use project-owned ports. Mail harnesses may share an
+SMTP endpoint. Before a user-requested stop, Studio checks whether another open
+project in the same IDE is configured to use the server address being stopped.
+If so, a confirmation lists the project names and affected endpoints. **Keep running**
+is the default; cancelling the main Harness Stop action leaves all its servers running.
+The same check applies to individual server stop actions. The check uses cached
+ownership and effective model/override settings, without probing ports. It cannot
+identify clients in separate IDE processes or external applications. Closing a project
+still performs its normal owned-server cleanup.

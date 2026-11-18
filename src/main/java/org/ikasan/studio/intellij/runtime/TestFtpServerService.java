@@ -26,6 +26,8 @@ import java.util.List;
 public final class TestFtpServerService implements Disposable {
     private final Project project;
     private FtpServer server;
+    private volatile HarnessStopImpact.Endpoint listeningEndpoint;
+    public HarnessStopImpact.Endpoint listeningEndpoint() { return disposed ? null : listeningEndpoint; }
     private TestFtpServerConfiguration configuration;
     private Path rootDirectory;
     private boolean localHarness;
@@ -99,6 +101,7 @@ public final class TestFtpServerService implements Disposable {
         configuration = new TestFtpServerConfiguration(requested.host(), factory.getListener("default").getPort(),
                 requested.username(), requested.password());
         localHarness = local;
+        listeningEndpoint = new HarnessStopImpact.Endpoint("FTP", configuration.host(), configuration.port());
         repaintCanvas();
         return rootDirectory;
     }
@@ -124,6 +127,7 @@ public final class TestFtpServerService implements Disposable {
         if (server != null) server.stop();
         server = null;
         configuration = null;
+        listeningEndpoint = null;
         localHarness = false;
         repaintCanvas();
     }
@@ -165,6 +169,7 @@ public final class TestFtpServerService implements Disposable {
             running = server;
             server = null;
             configuration = null;
+            listeningEndpoint = null;
             localHarness = false;
         }
         if (running != null) {

@@ -46,7 +46,18 @@ anyway** before selection/import is enabled. Approving restores the normal defau
 selections. The completion report records identity evidence and any explicit override.
 Changes to the imported model or checkout identity metadata require a fresh comparison.
 
-The **Classes and Dependencies** table shows original-source evidence on the left and proposed destination paths on the right. Exact file matches are hidden by default; use **Show identical files** to reveal them. Dependency rows, unresolved wiring/scan issues and pending edits remain visible. Equality is cached during background analysis:
+When the original factory contains a literal class argument for a missing, meta-pack-declared
+builder setting, **Review builder settings…** offers the recovered value and source location.
+For example, `setObjectClass(Payload.class)` can restore an XML converter's missing JAXB
+class. This works from explicit class imports or fully qualified class literals; computed
+expressions, wildcard imports, duplicate setters and ambiguous factories are not guessed.
+Existing model values are never replaced. **Apply with import** stages the settings;
+**Revert builder settings** discards them. **Perform Actions** saves an exact model backup
+under `user/import-reviews/` and writes the recovered model and affected generated
+factories in the same protected transaction as the selected source copies. Later
+regeneration retains the recovered settings. Cancelling the source review writes nothing.
+
+The **Classes and Dependencies** table shows original-source evidence on the left and proposed destination paths on the right. **Copy all new** stages every file missing from the destination; existing files, dependency choices and staged edits are preserved. Individual **Revert** actions remain available, and files are written only by **Perform Actions**. Exact file matches are hidden by default; use **Show identical files** to reveal them. Dependency rows, unresolved wiring/scan issues and pending edits remain visible. Equality is cached during background analysis:
 
 - Exact implementation types referenced by generated `@Resource` fields and matching
   original `@Bean` methods seed the recommendations. Explicit imports, AST type references,

@@ -12,11 +12,13 @@ import com.intellij.ui.components.*;
 import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.JBUI;
 import org.ikasan.studio.core.importer.SourceModuleImport;
+import org.ikasan.studio.core.importer.SourceBuilderSettingsRecovery;
 import org.ikasan.studio.core.importer.SourceCheckoutIdentity;
 import org.ikasan.studio.intellij.configuration.ImportEnvironmentPropertiesDialog;
 import org.ikasan.studio.intellij.project.ImportDialogWrapper;
 import org.ikasan.studio.intellij.project.StudioProjectFiles;
 import org.ikasan.studio.ui.StudioBundle;
+import org.ikasan.studio.ui.StudioUIUtils;
 import org.ikasan.studio.ui.UiContext;
 import org.jetbrains.annotations.Nullable;
 
@@ -45,6 +47,7 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
     private List<SourceModuleImport.ReviewAction> standaloneIssues = List.of();
     private final Choices choices = new Choices();
     private final JBTable table = new JBTable(choices);
+    private final JButton copyAllNewButton = new JButton(StudioBundle.message("sourceImport.files.copyAllNew"));
     private final JBCheckBox showIdenticalFiles = new JBCheckBox(StudioBundle.message("sourceImport.files.showIdentical"));
     private final JTabbedPane reviewTabs = new JBTabbedPane();
     private final SupportChoices supportChoices = new SupportChoices();
@@ -63,7 +66,12 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
     private final JBLabel registrationSummary = new JBLabel();
     private SourceModuleImport.SpringRegistration registrationCandidate;
     private SourceModuleImport.SpringRegistration approvedRegistration;
-    private record ReviewState(List<SourceModuleImport.ReviewAction> actions, SourceModuleImport.SpringRegistration registration) { }
+    private final JPanel builderSettingsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0));
+    private final JButton builderSettingsButton = new JButton(StudioBundle.message("sourceImport.builder.review"));
+    private final JBLabel builderSettingsSummary = new JBLabel();
+    private SourceBuilderSettingsRecovery.Plan builderCandidate, approvedBuilderSettings;
+    private record ReviewState(List<SourceModuleImport.ReviewAction> actions, SourceModuleImport.SpringRegistration registration,
+                               SourceBuilderSettingsRecovery.Plan builderSettings) { }
 
     private final javax.swing.Timer mergeRefresh = new javax.swing.Timer(120, event -> {
         if (!isDisposed() && analysis != null) { table.repaint(); refreshReview(); }
@@ -86,7 +94,9 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
         setOKButtonText(StudioBundle.message("sourceImport.apply"));
         init();
         mergeRefresh.setRepeats(false);
+        com.intellij.openapi.util.Disposer.register(getDisposable(), () -> StudioUIUtils.setAttentionPulse(registrationButton, false));
         com.intellij.openapi.util.Disposer.register(getDisposable(), mergeRefresh::stop);
+        com.intellij.openapi.util.Disposer.register(getDisposable(), () -> StudioUIUtils.setAttentionPulse(builderSettingsButton, false));
         com.intellij.openapi.util.Disposer.register(getDisposable(), () -> { reviewSequence.incrementAndGet(); reviewWorker.shutdownNow(); });
         setOKActionEnabled(false);
     }
@@ -179,7 +189,12 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
         table.setDefaultEditor(Boolean.class, new CopyButtonEditor());
         table.getAccessibleContext().setAccessibleName(StudioBundle.message("sourceImport.files"));
         JPanel filePanel = new JPanel(new BorderLayout(0, JBUI.scale(6)));
-        filePanel.add(showIdenticalFiles, BorderLayout.NORTH);
+        var fileActions = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0));
+        copyAllNewButton.setToolTipText(StudioBundle.message("sourceImport.files.copyAllNewHint"));
+        copyAllNewButton.setEnabled(false);
+        copyAllNewButton.addActionListener(event -> copyAllNewFiles());
+        fileActions.add(showIdenticalFiles); fileActions.add(copyAllNewButton);
+        filePanel.add(fileActions, BorderLayout.NORTH);
         filePanel.add(files, BorderLayout.CENTER);
         configureDetails(table, fileDetails, fileDetailsPane);
         filePanel.add(fileDetailsPane, BorderLayout.SOUTH);
@@ -226,9 +241,12 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
         panel.add(content, BorderLayout.CENTER);
         JPanel options = new JPanel(new GridLayout(0, 1));
         registrationPanel.add(registrationButton); registrationPanel.add(registrationSummary);
-        registrationPanel.setVisible(false);
+        registrationPanel.setVisible(false); StudioUIUtils.setAttentionPulse(registrationButton, false);
         registrationButton.addActionListener(event -> reviewSpringRegistration());
-        options.add(registrationPanel); options.add(properties);
+        builderSettingsPanel.add(builderSettingsButton); builderSettingsPanel.add(builderSettingsSummary);
+        builderSettingsPanel.setVisible(false);
+        builderSettingsButton.addActionListener(event -> reviewBuilderSettings());
+        options.add(registrationPanel); options.add(builderSettingsPanel); options.add(properties);
         panel.add(options, BorderLayout.SOUTH); panel.setPreferredSize(JBUI.size(920, 650));
         return panel;
     }
@@ -262,7 +280,9 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
     private void clearAnalysis() {
         reviewSequence.incrementAndGet();
         analysis = null; analysedSource = null; selectedFiles.clear(); selectedDependencies.clear();
-        registrationCandidate = null; approvedRegistration = null; registrationPanel.setVisible(false);
+        copyAllNewButton.setEnabled(false);
+        registrationCandidate = null; approvedRegistration = null; registrationPanel.setVisible(false); StudioUIUtils.setAttentionPulse(registrationButton, false);
+        resetBuilderSettings();
         discardMerges();
         identitySummary.setVisible(false); acceptIdentity.setVisible(false); acceptIdentity.setSelected(false);
         supportNotice.setVisible(false);
@@ -282,7 +302,8 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
     void acceptAnalysis(SourceModuleImport.Analysis result, Path selected) {
         source.setText(selected.toString());
         analysis = result; analysedSource = selected; lastAttempt = source.getText().trim();
-        registrationCandidate = null; approvedRegistration = null; registrationPanel.setVisible(false);
+        registrationCandidate = null; approvedRegistration = null; registrationPanel.setVisible(false); StudioUIUtils.setAttentionPulse(registrationButton, false);
+        resetBuilderSettings();
         inlineActions = Map.of(); standaloneIssues = List.of();
         discardMerges();
         selectedFiles.clear(); selectedDependencies.clear();
@@ -309,6 +330,8 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
 
     private void refreshReview() {
         if (analysis == null) return;
+        copyAllNewButton.setEnabled((!analysis.identity().requiresApproval() || acceptIdentity.isSelected())
+                && analysis.files().stream().anyMatch(file -> file.previous() == null && !selectedFiles.contains(file.source())));
         boolean hasSupport = !analysis.managedFiles().isEmpty();
         supportNotice.setVisible(hasSupport);
         if (hasSupport) {
@@ -323,24 +346,33 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
         var files = Set.copyOf(selectedFiles); var dependencies = Set.copyOf(selectedDependencies);
         var merges = Map.copyOf(stagedJava);
         java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-                    if (sequence != reviewSequence.get()) return new ReviewState(List.of(), null);
+                    if (sequence != reviewSequence.get()) return new ReviewState(List.of(), null, null);
                     try {
                         return new ReviewState(SourceModuleImport.reviewActions(reviewed, files, dependencies, merges),
-                                SourceModuleImport.previewSpringRegistration(reviewed, files, merges));
-                    } catch (java.io.IOException failure) { throw new java.util.concurrent.CompletionException(failure); }
+                                SourceModuleImport.previewSpringRegistration(reviewed, files, merges), SourceBuilderSettingsRecovery.preview(reviewed));
+                    } catch (Exception failure) { throw new java.util.concurrent.CompletionException(failure); }
                 }, reviewWorker)
                 .whenComplete((actions, failure) -> ApplicationManager.getApplication().invokeLater(() -> {
                     if (isDisposed() || project.isDisposed() || analysis != reviewed || sequence != reviewSequence.get()) return;
                     if (failure != null) {
-                        registrationCandidate = null; approvedRegistration = null; registrationPanel.setVisible(false);
+                        registrationCandidate = null; approvedRegistration = null; registrationPanel.setVisible(false); StudioUIUtils.setAttentionPulse(registrationButton, false);
+                        resetBuilderSettings();
                         com.intellij.openapi.diagnostic.Logger.getInstance(ImportSourceModuleDialog.class).warn("Could not prepare source review actions", failure);
                         attachActions(List.of(new SourceModuleImport.ReviewAction(SourceModuleImport.ReviewKind.SCAN,
                                 StudioBundle.message("sourceImport.reviewAction.failed"), List.of())));
                         return;
                     }
+                    builderCandidate = actions.builderSettings();
+                    if (!Objects.equals(builderCandidate, approvedBuilderSettings)) approvedBuilderSettings = null;
+                    builderSettingsPanel.setVisible(builderCandidate != null);
+                    builderSettingsButton.setText(StudioBundle.message(approvedBuilderSettings == null ? "sourceImport.builder.review" : "sourceImport.builder.revert"));
+                    builderSettingsSummary.setText(builderCandidate == null ? "" : StudioBundle.message(
+                            approvedBuilderSettings == null ? "sourceImport.builder.available" : "sourceImport.builder.staged", builderCandidate.settings().size()));
+                    StudioUIUtils.setAttentionPulse(builderSettingsButton, builderCandidate != null && approvedBuilderSettings == null);
                     registrationCandidate = actions.registration();
                     if (!Objects.equals(approvedRegistration, registrationCandidate)) approvedRegistration = null;
                     registrationPanel.setVisible(registrationCandidate != null);
+                    StudioUIUtils.setAttentionPulse(registrationButton, registrationCandidate != null && approvedRegistration == null);
                     registrationButton.setText(StudioBundle.message(approvedRegistration == null
                             ? "sourceImport.registration.review" : "sourceImport.registration.revert"));
                     registrationSummary.setText(registrationCandidate == null ? "" : StudioBundle.message(
@@ -492,6 +524,36 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
         return null;
     }
 
+    private void resetBuilderSettings() {
+        builderCandidate = null; approvedBuilderSettings = null;
+        builderSettingsPanel.setVisible(false); StudioUIUtils.setAttentionPulse(builderSettingsButton, false);
+    }
+
+    private void reviewBuilderSettings() {
+        if (approvedBuilderSettings != null) { approvedBuilderSettings = null; refreshReview(); return; }
+        var candidate = builderCandidate;
+        if (candidate == null) return;
+        String changes = candidate.settings().stream().map(setting -> setting.flow() + " → " + setting.component()
+                + "\n  " + setting.property() + " = " + setting.value() + "\n  " + setting.evidence())
+                .collect(java.util.stream.Collectors.joining("\n\n"));
+        StudioUIUtils.setAttentionPulse(builderSettingsButton, false);
+        // Bound the preview so a large module does not create a screen-height message dialog.
+        @SuppressWarnings("SplitModeApiUsage")
+        var review = new com.intellij.openapi.ui.DialogWrapper(project) {
+            { setTitle(StudioBundle.message("sourceImport.builder.title"));
+              setOKButtonText(StudioBundle.message("sourceImport.builder.stage")); init(); }
+            @Override protected JComponent createCenterPanel() {
+                var text = new JBTextArea(StudioBundle.message("sourceImport.builder.explanation", changes), 20, 85);
+                text.setEditable(false); text.setLineWrap(true); text.setWrapStyleWord(true);
+                text.getAccessibleContext().setAccessibleName(StudioBundle.message("sourceImport.builder.title"));
+                var scroll = new JBScrollPane(text); scroll.setMinimumSize(JBUI.size(400, 250));
+                scroll.setPreferredSize(JBUI.size(850, 450)); return scroll;
+            }
+        };
+        if (review.showAndGet()) approvedBuilderSettings = candidate;
+        refreshReview();
+    }
+
     private void reviewSpringRegistration() {
         if (approvedRegistration != null) {
             approvedRegistration = null;
@@ -523,7 +585,9 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
                 return panel;
             }
         };
-        if (review.showAndGet()) { approvedRegistration = candidate; refreshReview(); }
+        StudioUIUtils.setAttentionPulse(registrationButton, false);
+        if (review.showAndGet()) approvedRegistration = candidate;
+        refreshReview();
     }
 
     @Override protected void doOKAction() {
@@ -536,6 +600,7 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
         try {
             List<String> targets = new ArrayList<>(SourceModuleImport.importableFiles(analysis).stream().filter(f -> selectedFiles.contains(f.source())).map(SourceModuleImport.FileChoice::destination).toList());
             if (approvedRegistration != null) targets.add(approvedRegistration.destination());
+            if (approvedBuilderSettings != null) targets.addAll(approvedBuilderSettings.outputs().keySet());
             targets.add(SourceModuleImport.SUPPORT_CUSTOMISATIONS); targets.add("pom.xml"); StudioProjectFiles.saveConfigurationDocuments(project, targets);
             var files = Set.copyOf(selectedFiles); var dependencies = Set.copyOf(selectedDependencies);
             boolean identityApproved = acceptIdentity.isSelected();
@@ -543,7 +608,21 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
                     .collect(java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
             // Copy all / Save preview explicitly authorise replacement of these selected files only.
             var registration = approvedRegistration;
-            savedReport = work(() -> SourceModuleImport.apply(analysis, files, dependencies, true, identityApproved, merges, registration), false);
+            var builderSettings = approvedBuilderSettings;
+            savedReport = work(() -> SourceModuleImport.apply(analysis, files, dependencies, true, identityApproved, merges, registration, builderSettings), false);
+            if (savedReport != null && builderSettings != null) {
+                var restored = work(() -> org.ikasan.studio.core.io.ComponentIO.validatePersistedModuleJson(
+                        builderSettings.outputs().get(org.ikasan.studio.core.generator.ProjectArtifactRenderer.MODEL), "recovered builder settings", false), false);
+                if (restored != null) {
+                    context.setIkasanModule(restored);
+                    if (context.getViewHandlerFactory() != null) context.getViewHandlerFactory().clear();
+                    context.resetSelectionAfterDeletion();
+                    if (context.getDesignerCanvas() != null) {
+                        context.getDesignerCanvas().setInitialiseAllDimensions(true);
+                        context.getDesignerCanvas().repaint();
+                    }
+                }
+            }
         } finally { context.endMigration(); }
         if (savedReport == null) return;
         StudioProjectFiles.refreshConfigurationDirectory(project);
@@ -676,6 +755,16 @@ public final class ImportSourceModuleDialog extends ImportDialogWrapper {
 
     private static SourceModuleImport.FileChoice supportChoice(SourceModuleImport.ManagedFile file) {
         return new SourceModuleImport.FileChoice(file.source(), file.destination(), file.bytes(), file.current(), false, false, "");
+    }
+
+    private void copyAllNewFiles() {
+        if (analysis == null || (analysis.identity().requiresApproval() && !acceptIdentity.isSelected())) return;
+        if (table.isEditing()) table.getCellEditor().stopCellEditing();
+        // Use the analysed snapshots, independent of table sorting/filtering. Preserve staged edits.
+        for (var file : analysis.files())
+            if (file.previous() == null && !selectedFiles.contains(file.source())) copyFile(file, true);
+        choices.fireTableDataChanged(); refreshReview();
+        updateDetails(table);
     }
 
     private void copyFile(SourceModuleImport.FileChoice file, boolean copy) {

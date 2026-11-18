@@ -11,6 +11,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TestMailServerFailureInjectionTest {
     @Test
+    void ownedEndpointSnapshotsDoNotProbeOrStopServers() {
+        var project = mock(Project.class);
+        var stopped = new AtomicBoolean();
+        var service = new TestMailServerSessionService(project, mock(Alarm.class), () -> 0,
+                (host, port) -> { throw new AssertionError("Snapshot must not probe sockets"); });
+        try {
+            service.registerOwned("localhost", 1025, () -> stopped.set(true));
+            assertEquals(java.util.List.of(new HarnessStopImpact.Endpoint("SMTP", "localhost", 1025)), service.ownedEndpoints());
+            assertFalse(stopped.get());
+            service.stopAnyOwned();
+            assertTrue(service.ownedEndpoints().isEmpty());
+        } finally { service.dispose(); }
+    }
+
+    @Test
     void immediatelyExitedHarnessLosesOwnershipAfterStartupGrace() throws Exception {
         var project = mock(Project.class);
         when(project.getService(UiContext.class)).thenReturn(mock(UiContext.class));

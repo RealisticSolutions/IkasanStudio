@@ -121,8 +121,7 @@ class SourceModuleImportTest {
         assertThat(target().resolve(helper.destination())).doesNotExist();
         var analysis = analyse();
         write(target(), helper.destination(), "// developer-owned file");
-        var current = analysis;
-        assertThatThrownBy(() -> SourceModuleImport.apply(current, Set.of(CONTEXT_SOURCE), Set.of(), false, true))
+        assertThatThrownBy(() -> SourceModuleImport.apply(analysis, Set.of(CONTEXT_SOURCE), Set.of(), false, true))
                 .hasMessageContaining("Destination");
         assertThat(Files.readString(target().resolve(helper.destination()))).isEqualTo("// developer-owned file");
     }

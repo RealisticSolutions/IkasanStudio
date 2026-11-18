@@ -518,6 +518,8 @@ public class ImportSourceModuleDialogHeavyTest extends HeavyPlatformTestCase {
             var refresh = dialog.getClass().getDeclaredMethod("refreshReview"); refresh.setAccessible(true); refresh.invoke(dialog);
             com.intellij.testFramework.PlatformTestUtil.waitWithEventsDispatching("Spring registration was not offered", panel::isVisible, 10);
             var candidate = (SourceModuleImport.SpringRegistration) field(dialog, "registrationCandidate");
+            var reviewButton = (JButton) field(dialog, "registrationButton");
+            assertNotNull(reviewButton.getClientProperty("ikasan.studio.attentionPulseTimer"));
             assertEquals(List.of("org.original.Copied"), candidate.components());
             assertFalse(Files.exists(destination.resolve(candidate.destination())));
             var approved = dialog.getClass().getDeclaredField("approvedRegistration"); approved.setAccessible(true); approved.set(dialog, candidate);
@@ -526,11 +528,48 @@ public class ImportSourceModuleDialogHeavyTest extends HeavyPlatformTestCase {
             com.intellij.testFramework.PlatformTestUtil.waitWithEventsDispatching("Staged registration was not shown",
                     () -> button.getText().equals(org.ikasan.studio.ui.StudioBundle.message("sourceImport.registration.revert")), 10);
             assertTrue(((List<SourceModuleImport.ReviewAction>) field(dialog, "standaloneIssues")).isEmpty());
+            assertNull(button.getClientProperty("ikasan.studio.attentionPulseTimer"));
             button.doClick();
             com.intellij.testFramework.PlatformTestUtil.waitWithEventsDispatching("Registration revert did not restore the scan decision",
                     () -> fieldValue(dialog, "approvedRegistration") == null
                             && !((List<?>) fieldValue(dialog, "standaloneIssues")).isEmpty(), 10);
+            assertNotNull(button.getClientProperty("ikasan.studio.attentionPulseTimer"));
             assertFalse(Files.exists(destination.resolve(candidate.destination())));
+        } finally { dialog.close(DialogWrapper.CANCEL_EXIT_CODE); }
+        assertNull(((JButton) field(dialog, "registrationButton")).getClientProperty("ikasan.studio.attentionPulseTimer"));
+    }
+
+    public void testCopyAllNewStagesOnlyMissingFilesAndPreservesExistingSelectionsAndEdits() throws Exception {
+        var dialog = new ImportSourceModuleDialog(getProject());
+        var original = java.nio.file.Path.of("/original");
+        var destination = Files.createTempDirectory("studio-copy-all-new");
+        var files = List.of(
+                new SourceModuleImport.FileChoice("src/Z.java", "user/Z.java", encoded("class Z {}"), null, false, false, ""),
+                new SourceModuleImport.FileChoice("src/A.java", "user/A.java", encoded("class A {}"), null, false, false, ""),
+                new SourceModuleImport.FileChoice("src/C.java", "user/C.java", encoded("class C {}"), encoded("class C { int existing; }"), false, false, ""),
+                new SourceModuleImport.FileChoice("src/new.properties", "user/new.properties", encoded("key=value"), null, false, false, ""));
+        var analysis = new SourceModuleImport.Analysis(original, destination, files, List.of(), List.of(), List.of(), List.of(), "",
+                Map.of(), List.of(), Map.of(), identity(original, destination, "Example", "Example"));
+        try {
+            dialog.acceptAnalysis(analysis, original);
+            var selected = (Set<String>) field(dialog, "selectedFiles"); selected.add("src/A.java");
+            var edits = (Map<String, String>) field(dialog, "stagedJava"); edits.put("src/A.java", "class A { int reviewed; }");
+            var dependencies = (Set<String>) field(dialog, "selectedDependencies"); dependencies.add("already-selected");
+            var table = (JTable) field(dialog, "table"); table.getRowSorter().toggleSortOrder(1);
+            var button = (JButton) field(dialog, "copyAllNewButton"); assertTrue(button.isEnabled()); button.doClick();
+            assertEquals(Set.of("src/Z.java", "src/A.java", "src/new.properties"), selected);
+            assertEquals("class A { int reviewed; }", edits.get("src/A.java"));
+            assertEquals(Set.of("already-selected"), dependencies);
+            assertFalse(button.isEnabled());
+            assertFalse(Files.exists(destination.resolve("user")));
+            // The individual row action can still revert one file, re-enabling the bulk action.
+            ((javax.swing.table.AbstractTableModel) table.getModel()).setValueAt(false, 0, 0);
+            assertTrue(button.isEnabled());
+            dialog.acceptAnalysis(new SourceModuleImport.Analysis(original, destination, files, List.of(), List.of(), List.of(), List.of(), "",
+                    Map.of(), List.of(), Map.of(), identity(original, destination, "Example", "Other")), original);
+            assertFalse(button.isEnabled());
+            var bulk = dialog.getClass().getDeclaredMethod("copyAllNewFiles"); bulk.setAccessible(true); bulk.invoke(dialog);
+            assertTrue(((Set<?>) field(dialog, "selectedFiles")).isEmpty());
         } finally { dialog.close(DialogWrapper.CANCEL_EXIT_CODE); }
     }
 

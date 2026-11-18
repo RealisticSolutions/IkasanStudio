@@ -94,6 +94,10 @@ public final class TestMailServerSessionService implements Disposable {
         return ownedHarnesses.keySet().stream().anyMatch(listeningAddresses::contains);
     }
 
+    public java.util.List<HarnessStopImpact.Endpoint> ownedEndpoints() {
+        return ownedHarnesses.values().stream().map(owned -> new HarnessStopImpact.Endpoint("SMTP", owned.host(), owned.port())).toList();
+    }
+
     public boolean hasAnyOwned() {
         return !ownedHarnesses.isEmpty();
     }

@@ -19,6 +19,8 @@ public final class TestSftpServerService implements PersistentStateComponent<Tes
     private final Project project;
     private volatile LocalSftpHarness server;
     private volatile boolean disposed;
+    private volatile HarnessStopImpact.Endpoint listeningEndpoint;
+    public HarnessStopImpact.Endpoint listeningEndpoint() { return disposed ? null : listeningEndpoint; }
     public TestSftpServerService(Project project) { this.project = project; }
     @Override public Settings getState() { return settings; }
     @Override public void loadState(@NotNull Settings state) { settings = state; }
@@ -61,6 +63,7 @@ public final class TestSftpServerService implements PersistentStateComponent<Tes
                 throw new IllegalStateException("Open a project with a directory before starting the local SFTP harness.");
             }
             server = LocalSftpHarness.start(Path.of(basePath, "temporary-files", "test-data", "sftp"));
+            listeningEndpoint = new HarnessStopImpact.Endpoint("SFTP", "127.0.0.1", server.port());
         }
         repaintCanvas();
         return server;
@@ -71,7 +74,7 @@ public final class TestSftpServerService implements PersistentStateComponent<Tes
         return server.launchProperties();
     }
     public synchronized void stop() throws Exception {
-        if (server != null) { server.close(); server = null; }
+        if (server != null) { server.close(); server = null; listeningEndpoint = null; }
         repaintCanvas();
     }
     @Override public void dispose() {

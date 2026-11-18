@@ -2,6 +2,7 @@ package org.ikasan.studio.ui.actions;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -21,9 +22,10 @@ public class StopTestMailServerAction implements ActionListener {
     private final Project project;
     private final BasicElement ikasanBasicElement;
 
-    public StopTestMailServerAction(Project project, BasicElement ikasanBasicElement) {
-        this.project = project;
-        this.ikasanBasicElement = ikasanBasicElement;
+    private final boolean confirmed;
+    public StopTestMailServerAction(Project project, BasicElement ikasanBasicElement) { this(project, ikasanBasicElement, false); }
+    StopTestMailServerAction(Project project, BasicElement ikasanBasicElement, boolean confirmed) {
+        this.project = project; this.ikasanBasicElement = ikasanBasicElement; this.confirmed = confirmed;
     }
 
     @Override
@@ -39,6 +41,7 @@ public class StopTestMailServerAction implements ActionListener {
         int smtpPort = org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effectiveMailPort(project, flowElement);
         String smtpAddress = smtpHost + ":" + smtpPort;
         TestMailServerSessionService service = project.getService(TestMailServerSessionService.class);
+        if (!confirmed && !HarnessStopWarning.confirm(project, service.ownedEndpoints())) return;
         ProcessHandle terminalShell = null;
         try {
             terminalShell = MailHarnessProcessRecovery.terminalShell(project);
@@ -57,6 +60,10 @@ public class StopTestMailServerAction implements ActionListener {
                     try {
                         ProcessHandle harness = MailHarnessProcessRecovery.findHarness(shell, smtpHost, smtpPort);
                         if (harness != null) {
+                            var allowed = new java.util.concurrent.atomic.AtomicBoolean(false);
+                            ApplicationManager.getApplication().invokeAndWait(() -> allowed.set(!project.isDisposed()
+                                    && HarnessStopWarning.confirm(project, java.util.List.of(new org.ikasan.studio.intellij.runtime.HarnessStopImpact.Endpoint("SMTP", smtpHost, smtpPort)))));
+                            if (!allowed.get()) return;
                             // Recheck the shell association immediately before requesting graceful termination.
                             if (project.isDisposed() || !shell.isAlive()) return;
                             if (!harness.destroy()) throw new IllegalStateException("Termination request was rejected");
@@ -68,6 +75,8 @@ public class StopTestMailServerAction implements ActionListener {
                             });
                             return;
                         }
+                    } catch (ProcessCanceledException cancelled) {
+                        throw cancelled;
                     } catch (Exception failure) {
                         if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
                         String detail = redact(failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage());

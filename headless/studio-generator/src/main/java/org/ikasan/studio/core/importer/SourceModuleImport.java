@@ -921,6 +921,14 @@ public final class SourceModuleImport {
 
     public static Path apply(Analysis analysis, Set<String> files, Set<String> dependencies, boolean replaceExisting,
                              boolean acceptIdentity, Map<String, String> reviewedJava, SpringRegistration registration) throws Exception {
+        return apply(analysis, files, dependencies, replaceExisting, acceptIdentity, reviewedJava, registration, null);
+    }
+
+    public static Path apply(Analysis analysis, Set<String> files, Set<String> dependencies, boolean replaceExisting,
+                             boolean acceptIdentity, Map<String, String> reviewedJava, SpringRegistration registration,
+                             SourceBuilderSettingsRecovery.Plan builderSettings) throws Exception {
+        if (builderSettings != null && !builderSettings.equals(SourceBuilderSettingsRecovery.preview(analysis)))
+            throw new IOException("Builder settings or source changed since review. Analyse and review again.");
         if (registration != null && !registration.equals(previewSpringRegistration(analysis, files, reviewedJava)))
             throw new IOException("Spring registration review changed. Review it again before importing.");
         if (registration != null) {
@@ -995,10 +1003,22 @@ public final class SourceModuleImport {
             if (!Objects.equals(existing(target), analysis.originalPom())) throw new IOException("pom.xml changed since review. Analyse again.");
             originals.put(target, analysis.originalPom()); writes.put(target, encode(pomAfter(analysis, dependencies).getBytes(StandardCharsets.UTF_8)));
         }
+        if (builderSettings != null) {
+            for (var output : builderSettings.outputs().entrySet()) {
+                Path target = safe(analysis.destinationRoot(), output.getKey());
+                if (writes.containsKey(target)) throw new IOException("Conflicting builder recovery output: " + output.getKey());
+                originals.put(target, encode(builderSettings.destinationInputs().get(output.getKey()).getBytes(StandardCharsets.UTF_8)));
+                writes.put(target, encode(output.getValue().getBytes(StandardCharsets.UTF_8)));
+            }
+            Path backup = safe(analysis.destinationRoot(), "user/import-reviews/model-before-builder-recovery-" + UUID.randomUUID() + ".json");
+            originals.put(backup, null);
+            writes.put(backup, encode(builderSettings.destinationInputs().get(ProjectArtifactRenderer.MODEL).getBytes(StandardCharsets.UTF_8)));
+        }
         Path report = safe(analysis.destinationRoot(), "user/import-reviews/" + UUID.randomUUID() + ".md");
         originals.put(report, null); writes.put(report, encode((report(analysis, files, dependencies, registration)
                 + (analysis.identity().requiresApproval() && acceptIdentity ? "\nDeveloper explicitly approved the mismatched/unverified checkout identity.\n" : "")
                 + (reviewedJava.isEmpty() ? "" : "\nStaged Java merges applied: " + new TreeSet<>(reviewedJava.keySet()) + "\n")
+                + (builderSettings == null ? "" : "\n## Reviewed builder settings\n\n" + builderSettings.settings() + "\n")
                 + (registration == null ? "" : "\n## Reviewed Spring registration\n\nCreated " + registration.destination()
                         + "\nRegistered components: " + registration.components() + "\n"))
                 .getBytes(StandardCharsets.UTF_8)));

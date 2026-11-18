@@ -25,9 +25,14 @@ import java.util.List;
  */
 public final class HarnessControlActions {
     private final Project project;
+    private final java.util.function.Predicate<List<org.ikasan.studio.intellij.runtime.HarnessStopImpact.Endpoint>> confirmStop;
 
     public HarnessControlActions(Project project) {
-        this.project = project;
+        this(project, endpoints -> HarnessStopWarning.confirm(project, endpoints));
+    }
+
+    HarnessControlActions(Project project, java.util.function.Predicate<List<org.ikasan.studio.intellij.runtime.HarnessStopImpact.Endpoint>> confirmStop) {
+        this.project = project; this.confirmStop = confirmStop;
     }
 
     public ActionListener startAction() {
@@ -53,7 +58,7 @@ public final class HarnessControlActions {
         return hasHarnesses(currentModule());
     }
 
-    /** Project-owned services only; no socket probes or other blocking work on the EDT. */
+    /** Owned servers and model-referenced shared SMTP availability; cached reads only on the EDT. */
     public List<String> runningHarnesses() {
         if (project.isDisposed()) return List.of();
         var running = new java.util.ArrayList<String>();
@@ -63,6 +68,15 @@ public final class HarnessControlActions {
         if (ftp != null && ftp.isRunning()) running.add("FTP");
         if (sftp != null && sftp.isRunning()) running.add("SFTP");
         if (mail != null && mail.hasAnyOwnedListening()) running.add("SMTP");
+        else if (mail != null) {
+            var context = project.getService(UiContext.class);
+            var module = context == null ? null : context.getIkasanModule();
+            if (module != null && TestMailServerLinks.findLinks(module).stream().flatMap(link -> link.producers().stream())
+                    .anyMatch(element -> mail.isListening(
+                            org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effectiveMailHost(project, element),
+                            org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effectiveMailPort(project, element))))
+                running.add(org.ikasan.studio.ui.StudioBundle.message("harness.smtp.sharedAvailable"));
+        }
         return List.copyOf(running);
     }
 
@@ -97,23 +111,24 @@ public final class HarnessControlActions {
     }
 
     private void stopHarnesses(Module module, ActionEvent event) {
-        SftpHarnessAction.stop(project);
+        if (!confirmStop.test(org.ikasan.studio.intellij.runtime.HarnessStopImpact.owned(project))) return;
+        SftpHarnessAction.stop(project, true);
         List<TestFtpServerLinks.Link> ftpLinks = TestFtpServerLinks.findLinks(module);
         if (!ftpLinks.isEmpty()) {
             FlowElement owner = firstFtpOwner(ftpLinks.get(0));
             if (owner != null) {
-                new StopTestFtpServerAction(project, owner).actionPerformed(event);
+                new StopTestFtpServerAction(project, owner, true).actionPerformed(event);
             }
         }
         TestMailServerSessionService mailService = project.getService(TestMailServerSessionService.class);
         List<TestMailServerLinks.Link> mailLinks = TestMailServerLinks.findLinks(module);
         if (mailService.hasAnyOwned() && !mailLinks.isEmpty() && !mailLinks.get(0).producers().isEmpty()) {
-            new StopTestMailServerAction(project, mailLinks.get(0).producers().get(0)).actionPerformed(event);
+            new StopTestMailServerAction(project, mailLinks.get(0).producers().get(0), true).actionPerformed(event);
             return;
         }
         for (TestMailServerLinks.Link link : mailLinks) {
             if (mailService.isListening(link.host(), link.port()) && !link.producers().isEmpty()) {
-                new StopTestMailServerAction(project, link.producers().get(0)).actionPerformed(event);
+                new StopTestMailServerAction(project, link.producers().get(0), false).actionPerformed(event);
                 break;
             }
         }

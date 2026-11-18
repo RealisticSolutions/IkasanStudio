@@ -5,6 +5,16 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Show shared/external SMTP availability in the Harness running indicator without claiming ownership; retain cached endpoint checks and restore idle state when the listener disappears.
+
+- Add Copy all new to source comparison to stage missing destination files together while preserving existing files, dependencies and staged edits.
+
+- Warn before stopping owned test servers whose endpoints are configured in other open projects; allow cancelling aggregate shutdown before any server stops, and guard individual stop actions.
+
+- Offer reviewed recovery of missing, meta-pack-declared builder class settings from literal class arguments in original source; preserve existing values, back up the model and regenerate affected factories transactionally.
+
+- Pulse the Spring registration review button while copied components need registration, with cleanup on staging, reset and dialog closure.
+
 - Recover reviewed JMS trusted-package context helpers during source-assisted runtime import, preserving the reflected class name and original trust settings in user-owned source without copying generated Spring factories.
 
 - Keep the Spring registration review popup compact by bounding wrapped help text and allowing its code preview to scroll instead of forcing full-screen height.

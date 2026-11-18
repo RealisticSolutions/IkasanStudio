@@ -34,6 +34,7 @@ class TestFtpServerServiceTest {
             Path firstRoot = first.startLocal();
             Path secondRoot = second.startLocal();
             var firstAddress = first.localConfiguration();
+            assertThat(first.listeningEndpoint()).isEqualTo(new HarnessStopImpact.Endpoint("FTP", firstAddress.host(), firstAddress.port()));
             var secondAddress = second.localConfiguration();
             assertThat(firstAddress.port()).isPositive().isNotEqualTo(secondAddress.port());
             assertThat(secondAddress.port()).isPositive();
@@ -53,6 +54,7 @@ class TestFtpServerServiceTest {
             // Later delivery uses the same live servers, without reset or restart.
             transferAndReadBack(firstAddress, "later.txt", "later delivery");
             first.stop();
+            assertThat(first.listeningEndpoint()).isNull();
             assertThat(first.localConfiguration().port()).isZero();
             org.assertj.core.api.Assertions.assertThatThrownBy(first::launchProperties).isInstanceOf(IllegalStateException.class);
             transferAndReadBack(secondAddress, "later.txt", "second still running");

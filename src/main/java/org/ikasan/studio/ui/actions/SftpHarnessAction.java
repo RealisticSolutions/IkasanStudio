@@ -36,7 +36,10 @@ public final class SftpHarnessAction {
             });
         });
     }
-    public static void stop(Project project) {
+    public static void stop(Project project) { stop(project, false); }
+    static void stop(Project project, boolean confirmed) {
+        var endpoint = project.getService(TestSftpServerService.class).listeningEndpoint();
+        if (!confirmed && endpoint != null && !HarnessStopWarning.confirm(project, java.util.List.of(endpoint))) return;
         background(project, () -> project.getService(TestSftpServerService.class).stop());
     }
     public static void showFiles(Project project) {
