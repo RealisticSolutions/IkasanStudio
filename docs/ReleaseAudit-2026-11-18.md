@@ -47,3 +47,9 @@ Updated current feature, installation/release-channel, pack coverage and harness
 Only Markdown changed. The README fragment used as the packaged Marketplace description and the release change notes are unchanged. Rebuilt with `./gradlew --no-configuration-cache buildPlugin --rerun verifyReleaseArchive --rerun -PstudioSandboxDirectory=build/community-beta3-verification-sandbox` — **PASS**. The resulting ZIP is byte-for-byte identical to the candidate above, with the same SHA-256. Earlier plugin/headless and per-IDE verification results therefore still apply to this exact archive; no functional test rerun was needed for these prose edits.
 
 The draft release evidence bundle includes the rebuild log. This does not waive JetBrains' review of an uploaded plugin update or complete the outstanding signed-artifact/manual checks.
+
+## Upstream documentation synchronization
+
+Community `main` incorporates upstream `f7275c478054f779d4e9c92e68d58859c8d9b4cc` through merge `47c50e4a`. General documentation corrections are now authoritative upstream and synchronized into this fork. Community identity, vendor/support links, Marketplace channel, version, README description, change notes and publishing controls are unchanged. The checkout guide now uses community `main` directly.
+
+Local links passed across 55 maintained Markdown documents. The community ZIP was rebuilt and its archive audit passed again (1,500 resources, 677 Studio classes). Its SHA-256 remains `57756822bbdc33f16719b1632a34a893f13358ef424046fda412f8752c5c18ea`, byte-for-byte identical to the previously tested archive. The earlier test and compatibility results still apply. The evidence bundle includes `upstream-sync-rebuild.log`.
