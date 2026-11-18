@@ -9,6 +9,10 @@ Design, build, run and test Ikasan integrations inside IntelliJ IDEA.
 
 The beta baseline currently uses the [archived V3/V4 ZIP](../downloads/ikasanstudio-1.0.0-beta.No-Ik5.zip); confirmation that this is the published beta artifact is pending. Availability was reviewed on **6 November 2026**. The channel matters: beta and nightly archives can contain the same plugin version number.
 
+## Beta.2 candidate
+
+The **1.0.0-beta.3** candidate includes the implemented capabilities in both the **Beta** and **Nightly** rows below, including bundled Ikasan 5.1.0 and the source-import workflow. It also includes reviewed delegate/builder-setting recovery, bulk new-file selection, harness ownership warnings/status and HTTP-derived H2 defaults. The table's labels continue to describe the earlier downloadable archives until a tested beta.3 artifact is published. See the [candidate audit](ReleaseAudit-2026-11-18.md); do not infer publication from this preparation entry.
+
 ## Visual flow design
 
 | Version | Feature | Developer benefit |

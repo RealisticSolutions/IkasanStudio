@@ -42,13 +42,15 @@ Maintained by **Realistic Solutions**. Contact [community support](mailto:suppor
 Ikasan Studio is open source under the [BSD 3-Clause License](https://github.com/RealisticSolutions/IkasanStudio/blob/main/LICENSE.txt); [browse the source code](https://github.com/RealisticSolutions/IkasanStudio).
 <!-- Plugin description end -->
 
+**Release candidate:** Ikasan Studio Community **1.0.0-beta.3** is being prepared. See the [candidate audit](docs/ReleaseAudit-2026-11-18.md).
+
 **Builds:** Compare [beta and nightly features](docs/Features.md). [Nightly ZIPs](downloads/) are updated in this repository and installed through IntelliJ’s **Install Plugin from Disk**.
 
 [Get started](#get-started) · [Feature matrix](docs/Features.md) · [Documentation](#documentation) · [Build and contribute](#build-and-contribute) · [Report a problem](#report-a-problem)
 
 ## What you can do
 
-See the [complete feature matrix](docs/Features.md) for capabilities grouped by function, with **Beta** and **Nightly** availability. [Nightly ZIPs](downloads/) are updated in this repository; Ikasan 5 support and the latest source-import workflow are nightly features.
+See the [complete feature matrix](docs/Features.md) for capabilities grouped by function, with **Beta** and **Nightly** availability. [Nightly ZIPs](downloads/) are updated in this repository; The beta.3 candidate includes Ikasan 5.1.0 and the latest source-import workflow.
 
 - Design flows with a component palette, property editor and visual connections in IntelliJ's main editor area.
 - Generate application code and configuration while keeping business logic in developer-owned source files.
