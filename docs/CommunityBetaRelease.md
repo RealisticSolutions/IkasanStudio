@@ -9,30 +9,30 @@ public release or upload to Marketplace. The Marketplace channel remains `defaul
 The dated preparation record below is historical evidence for beta.1, not certification
 of beta.3 or a statement that beta.1 is still awaiting its first submission.
 
-## Updating the normal community checkout for beta.3
+## Updating the normal community checkout
 
-After the verified `release/1.0.0-beta.3` branch is available on the community remote,
-run the following from a clean checkout. These commands preserve history and stop if
-`main` has diverged; do not use a force push to bypass that check.
+Community `main` contains the beta.3 preparation and the latest upstream documentation
+corrections (`f7275c47`). Use `main` for the community release; the earlier
+`release/1.0.0-beta.3` branch is no longer required to obtain these changes.
+
+From a clean checkout:
 
 ```bash
 cd /home/hidavi/dev/ws/IkasanStudio_community
 git status --short
-git fetch origin
 git switch main
-git merge --ff-only origin/main
-git merge --ff-only origin/release/1.0.0-beta.3
-git push origin main
+git pull --ff-only origin main
 ```
 
-The release branch merges upstream commit `a4ff8a5c` into community commit `cfe23815`
-and then applies community beta.3 release preparation. Community plugin identity,
-vendor/support details, manual release workflow and historical artifacts are retained.
-Updating `main` does not itself publish the plugin to Marketplace.
+General code, fixes and documentation changes belong in `ikasanEIP/IkasanStudio`
+first. Once upstream is verified, merge its `main` into community `main`, retaining
+community plugin identity, vendor/support links, publishing controls and historical
+artifacts. Community branding and Marketplace-specific release changes stay in this
+fork. Do not submit the whole community branch as a pull request to upstream.
 
-For later upstream updates, fetch `upstream` and merge its `main` on a new preparation
-branch. Review conflicts in branding, publishing configuration and historical artifacts;
-do not replace the community branch wholesale with upstream.
+Review branding and publishing conflicts explicitly; do not replace community `main`
+wholesale with upstream or use a force push to bypass divergence. Updating `main`
+does not itself publish the plugin to Marketplace.
 
 ## Starting point — 6 October 2026
 
