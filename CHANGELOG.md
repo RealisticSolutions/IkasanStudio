@@ -5,6 +5,8 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Recover reviewed JMS trusted-package context helpers during source-assisted runtime import, preserving the reflected class name and original trust settings in user-owned source without copying generated Spring factories.
+
 - Keep the Spring registration review popup compact by bounding wrapped help text and allowing its code preview to scroll instead of forcing full-screen height.
 
 - Offer reviewed, staged Spring registration for copied public component classes during source import. Create explicit user-owned @Import wiring with the selected copies, preserve existing files, allow revert, and reject stale or forged registration plans.

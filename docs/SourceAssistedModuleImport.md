@@ -26,8 +26,15 @@ application classes, Maven plugins, builds or scripts.
 
 Before defaults are selected, Studio compares the imported model's exact, case-sensitive
 module name with `module.name` declarations in source properties and the saved model
-of a Studio checkout. Generated source properties/models are read only for identity;
-generated implementation files remain excluded from transfer. Folder names and Maven
+of a Studio checkout. Generated source properties/models supply identity evidence;
+generated Spring factories remain excluded from transfer. One narrow exception recovers
+Studio's JMS trusted-package context helper when runtime configuration refers to it.
+The source review offers the extracted helper as a developer-owned Java file, preserving
+the original trusted packages and runtime binary name (including `$`) without copying
+its enclosing Spring configuration. Review and copy that row with the other required
+classes. Existing files remain protected and source/configuration changes require a
+fresh review. Missing or ambiguous helper sources produce a review warning; Studio
+does not infer trust packages or enable trust for all packages. Folder names and Maven
 artifact IDs are hints, never proof of identity. Referenced implementation matches are
 shown as additional evidence.
 

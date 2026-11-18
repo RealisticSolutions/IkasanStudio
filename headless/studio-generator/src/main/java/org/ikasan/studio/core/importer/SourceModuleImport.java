@@ -37,7 +37,11 @@ public final class SourceModuleImport {
     private static final String UNSCANNED_PROVIDER = "Copied Spring provider is outside destination component scanning: ";
 
     public record FileChoice(String source, String destination, String bytes, String previous,
-                             boolean recommended, boolean wiring, String reason, boolean identicalToDestination) {
+                             boolean recommended, boolean wiring, String reason, boolean identicalToDestination, String originalBytes) {
+        public FileChoice(String source, String destination, String bytes, String previous,
+                          boolean recommended, boolean wiring, String reason, boolean identicalToDestination) {
+            this(source, destination, bytes, previous, recommended, wiring, reason, identicalToDestination, bytes);
+        }
         public FileChoice(String source, String destination, String bytes, String previous,
                           boolean recommended, boolean wiring, String reason) {
             this(source, destination, bytes, previous, recommended, wiring, reason,
@@ -308,6 +312,10 @@ public final class SourceModuleImport {
             choices.add(new FileChoice(property.source(), target, encode(property.text().getBytes(StandardCharsets.ISO_8859_1)),
                     existing(safe(destination, target)), true, false, "Named @PropertySource resource of a recommended class; original classpath path is retained."));
         }
+        Path runtimeProperties = safe(destination, "generated/src/main/resources/application.properties");
+        if (Files.isRegularFile(runtimeProperties, LinkOption.NOFOLLOW_LINKS))
+            supportInputs.put(relative(destination, runtimeProperties), encode(read(runtimeProperties)));
+        addTrustedContextFactories(source, destination, inspection, candidate, parser, choices, generatedInputs, notes);
         choices.sort(Comparator.comparing(FileChoice::destination).thenComparing(FileChoice::source));
         String originalPom = existing(safe(destination, "pom.xml"));
         if (originalPom == null) throw new IOException("The destination project has no pom.xml.");
@@ -318,6 +326,83 @@ public final class SourceModuleImport {
         return new Analysis(source, destination, List.copyOf(choices), List.copyOf(beans), List.copyOf(properties),
                 dependencies, List.copyOf(notes), originalPom, Map.copyOf(generatedInputs), List.copyOf(managed), Map.copyOf(supportInputs),
                 new SourceCheckoutIdentity.Check(inspection, candidate, recommended.stream().map(java -> java.pkg() + "." + java.path().getFileName().toString().replace(".java", "")).sorted().toList()));
+    }
+
+    /** Keep the reflected binary name without duplicating its enclosing Spring configuration. */
+    private static void addTrustedContextFactories(Path source, Path destination,
+            SourceCheckoutIdentity.Inspection inspection, SourceCheckoutIdentity.Candidate candidate,
+            JavaParser parser, List<FileChoice> choices, Map<String, String> generatedInputs, List<String> notes) throws IOException {
+        Path properties = safe(destination, "generated/src/main/resources/application.properties");
+        if (!Files.isRegularFile(properties, LinkOption.NOFOLLOW_LINKS)) return;
+        var names = Pattern.compile("org\\.ikasan\\.studio\\.boot\\.flow\\.[A-Za-z0-9_]+\\.ComponentFactory[A-Za-z0-9_]+\\$Trusted[A-Za-z0-9_]+ContextFactory")
+                .matcher(new String(read(properties), StandardCharsets.ISO_8859_1));
+        Set<String> seen = new HashSet<>();
+        while (names.find()) {
+            String binary = names.group();
+            if (!seen.add(binary)) continue;
+            int dollar = binary.indexOf('$'), dot = binary.lastIndexOf('.', dollar);
+            String outer = binary.substring(0, dollar), nested = binary.substring(dollar + 1);
+            String outerPath = "generated/src/main/java/" + outer.replace('.', '/') + ".java";
+            String destinationJava = generatedInputs.get(outerPath);
+            if (destinationJava != null && parser.parse(decode(destinationJava)).getResult().stream()
+                    .flatMap(u -> u.findAll(com.github.javaparser.ast.body.ClassOrInterfaceDeclaration.class).stream())
+                    .anyMatch(t -> t.getNameAsString().equals(nested))) continue;
+            String target = "user/src/main/java/" + binary.replace('.', '/') + ".java";
+            var matches = new ArrayList<Path>();
+            for (String owner : candidate.ownedPomDirectories()) {
+                Path file = safe(source, (owner.isBlank() ? "" : owner + "/") + "src/main/java/" + outer.replace('.', '/') + ".java");
+                if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && inspection.includes(candidate, file)) matches.add(file);
+            }
+            // Generated Maven modules are deliberately excluded from ordinary source transfer.
+            // Inspect only the selected application's exact factory path for this narrow exception.
+            Path generatedOriginal = safe(source, (candidate.directory().isBlank() ? "" : candidate.directory() + "/") + outerPath);
+            if (Files.isRegularFile(generatedOriginal, LinkOption.NOFOLLOW_LINKS) && !matches.contains(generatedOriginal))
+                matches.add(generatedOriginal);
+            if (matches.size() == 1) {
+                Path file = matches.get(0);
+                byte[] original = read(file);
+                String sourcePath = relative(source, file);
+                var unit = parser.parse(new String(original, StandardCharsets.UTF_8)).getResult().orElse(null);
+                if (unit != null) {
+                    var helper = unit.findAll(com.github.javaparser.ast.body.ClassOrInterfaceDeclaration.class).stream()
+                            .filter(t -> t.getNameAsString().equals(nested) && t.isPublic() && t.isStatic()
+                                    && t.getParentNode().filter(n -> n instanceof com.github.javaparser.ast.body.TypeDeclaration<?>).isPresent()
+                                    && t.getExtendedTypes().size() == 1
+                                    && resolve(t.getExtendedTypes().get(0).getNameWithScope(), unit, Set.of())
+                                            .equals("org.apache.activemq.jndi.ActiveMQInitialContextFactory"))
+                            .findFirst().orElse(null);
+                    if (helper != null && helper.getConstructors().isEmpty() && helper.getFields().isEmpty()
+                            && helper.getMethods().size() == 3
+                            && unit.findAll(com.github.javaparser.ast.body.ClassOrInterfaceDeclaration.class).stream()
+                                    .filter(t -> t.getNameAsString().startsWith("Trusted") && t.getNameAsString().endsWith("ContextFactory")).count() == 1
+                            && choices.stream().noneMatch(choice -> choice.source().equals(sourcePath))
+                            && helper.findAll(NameExpr.class).stream().noneMatch(n -> n.getNameAsString().equals(outer.substring(dot + 1)))
+                            && helper.getMethods().stream().map(MethodDeclaration::getNameAsString).collect(java.util.stream.Collectors.toSet())
+                                    .equals(Set.of("initialFactoryName", "configure", "createConnectionFactory"))) {
+                        var copy = helper.clone();
+                        String simple = binary.substring(dot + 1);
+                        copy.setStatic(false); copy.setName(simple);
+                        copy.findAll(com.github.javaparser.ast.expr.SimpleName.class).stream()
+                                .filter(n -> n.asString().equals(nested)).forEach(n -> n.setIdentifier(simple));
+                        var output = new CompilationUnit(); output.setPackageDeclaration(binary.substring(0, dot));
+                        Set<String> used = copy.findAll(com.github.javaparser.ast.expr.SimpleName.class).stream()
+                                .map(com.github.javaparser.ast.expr.SimpleName::asString).collect(java.util.stream.Collectors.toSet());
+                        unit.getImports().stream().filter(i -> i.isAsterisk() || used.contains(i.getName().getIdentifier()))
+                                .forEach(i -> output.addImport(i.clone()));
+                        output.addType(copy);
+                        String bytes = encode(output.toString().getBytes(StandardCharsets.UTF_8));
+                        String previous = existing(safe(destination, target));
+                        choices.add(new FileChoice(relative(source, file), target, bytes, previous, true, false,
+                                "Extracted JMS trusted-package context factory. The $ in the Java class name preserves the runtime binary name; "
+                                        + "only this helper is copied, not its enclosing Spring configuration.",
+                                Objects.equals(bytes, previous), encode(original)));
+                        continue;
+                    }
+                }
+            }
+            notes.add("Missing runtime context factory: " + binary
+                    + ". Its trusted-package configuration cannot be recovered automatically; review the original JMS provider source before running.");
+        }
     }
 
     private static String supportPath(JavaSource java) {
@@ -649,7 +734,7 @@ public final class SourceModuleImport {
             else if (!files.contains(file.source()) && file.recommended() && !file.source().endsWith(".java")
                     && !Objects.equals(file.bytes(), file.previous()))
                 actions.add(new ReviewAction(ReviewKind.RESOURCE, file.destination(), List.of()));
-            else if (!files.contains(file.source()) && referencedPaths.contains(file.destination())
+            else if (!files.contains(file.source()) && (referencedPaths.contains(file.destination()) || !file.originalBytes().equals(file.bytes()))
                     && !Objects.equals(file.bytes(), file.previous()))
                 actions.add(new ReviewAction(ReviewKind.SOURCE, file.destination(), List.of()));
         }
@@ -667,7 +752,7 @@ public final class SourceModuleImport {
                 actions.add(new ReviewAction(ReviewKind.SUPPORT_COMPARE, support.destination(), List.of()));
         }
         for (String note : analysis.notes()) if (note.startsWith("Cannot parse source;") || note.startsWith("Ambiguous class in multiple source modules;")
-                || note.startsWith("Cannot inspect Maven declarations:"))
+                || note.startsWith("Cannot inspect Maven declarations:") || note.startsWith("Missing runtime context factory:"))
             actions.add(new ReviewAction(ReviewKind.SCAN, note, List.of()));
         return List.copyOf(actions);
     }
@@ -877,7 +962,7 @@ public final class SourceModuleImport {
         Map<Path, String> originals = new LinkedHashMap<>(), writes = new LinkedHashMap<>();
         for (String source : files) {
             var file = importableFiles(analysis).stream().filter(f -> f.source().equals(source)).findFirst().orElseThrow();
-            if (!Objects.equals(existing(safe(analysis.sourceRoot(), source)), file.bytes())) throw new IOException("Original source changed since review: " + source);
+            if (!Objects.equals(existing(safe(analysis.sourceRoot(), source)), file.originalBytes())) throw new IOException("Original source changed since review: " + source);
             Path target = safe(analysis.destinationRoot(), file.destination());
             String output = reviewedJava.containsKey(source) ? encode(reviewedJava.get(source).getBytes(StandardCharsets.UTF_8)) : file.bytes();
             if (writes.putIfAbsent(target, output) != null) throw new IOException("Multiple sources target " + file.destination());

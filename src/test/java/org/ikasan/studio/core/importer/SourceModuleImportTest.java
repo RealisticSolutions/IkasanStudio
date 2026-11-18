@@ -60,6 +60,103 @@ class SourceModuleImportTest {
     }
     private SourceModuleImport.Analysis analyse() throws Exception { return SourceModuleImport.analyse(source(), target(), () -> { }); }
 
+    private static final String CONTEXT_BINARY = "org.ikasan.studio.boot.flow.orders.ComponentFactoryOrders$TrustedOrderConsumerContextFactory";
+    private static final String CONTEXT_SOURCE = "generated/src/main/java/org/ikasan/studio/boot/flow/orders/ComponentFactoryOrders.java";
+
+    private void trustedContextFixture() throws Exception {
+        fixture();
+        write(target(), "generated/src/main/resources/application.properties",
+                "consumer.connectionFactoryJndiProperties={\"java.naming.factory.initial\":\"" + CONTEXT_BINARY + "\"}\n");
+        write(target(), CONTEXT_SOURCE, "package org.ikasan.studio.boot.flow.orders; public class ComponentFactoryOrders { }");
+        write(source(), CONTEXT_SOURCE, """
+                package org.ikasan.studio.boot.flow.orders;
+                import org.apache.activemq.jndi.ActiveMQInitialContextFactory;
+                import java.util.List;
+                @org.springframework.context.annotation.Configuration
+                public class ComponentFactoryOrders {
+                    public static class TrustedOrderConsumerContextFactory extends ActiveMQInitialContextFactory {
+                        public static String initialFactoryName(String name) { return TrustedOrderConsumerContextFactory.class.getName(); }
+                        public static List<String> configure() { return List.of("org.example.cat.domain"); }
+                        public void createConnectionFactory() { }
+                    }
+                }
+                """);
+    }
+
+    @Test void extractsReviewedTrustedContextWithoutCopyingSpringFactoryAndLoadsItsBinaryName() throws Exception {
+        trustedContextFixture();
+        var analysis = analyse();
+        var helper = analysis.files().stream().filter(f -> f.source().equals(CONTEXT_SOURCE)).findFirst().orElseThrow();
+        assertThat(helper.recommended()).isTrue();
+        assertThat(helper.wiring()).isFalse();
+        assertThat(SourceModuleImport.reviewActions(analysis, Set.of(), Set.of()))
+                .anyMatch(a -> a.kind() == SourceModuleImport.ReviewKind.SOURCE && a.subject().equals(helper.destination()));
+        SourceModuleImport.apply(analysis, Set.of(CONTEXT_SOURCE), Set.of(), false, true);
+        String copied = Files.readString(target().resolve(helper.destination()));
+        assertThat(copied).contains("org.example.cat.domain", "public class ComponentFactoryOrders$TrustedOrderConsumerContextFactory")
+                .doesNotContain("@org.springframework.context.annotation.Configuration", "public class ComponentFactoryOrders {");
+        // No broker is needed: prove javac and reflection accept the preserved binary name.
+        Path stub = temporary.resolve("compile/org/apache/activemq/jndi/ActiveMQInitialContextFactory.java");
+        Files.createDirectories(stub.getParent()); Files.writeString(stub, "package org.apache.activemq.jndi; public class ActiveMQInitialContextFactory { }");
+        Path classes = temporary.resolve("classes"); Files.createDirectories(classes);
+        var compiler = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "javac").toString(),
+                "--release", "17", "-d", classes.toString(), stub.toString(), target().resolve(helper.destination()).toString())
+                .redirectErrorStream(true).start();
+        String diagnostics = new String(compiler.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(compiler.waitFor()).as(diagnostics).isZero();
+        try (var loader = new java.net.URLClassLoader(new java.net.URL[]{classes.toUri().toURL()}, null)) {
+            var loaded = Class.forName(CONTEXT_BINARY, true, loader);
+            assertThat(loaded.getMethod("initialFactoryName", String.class).invoke(null, "unused")).isEqualTo(CONTEXT_BINARY);
+            assertThat(loaded.getMethod("configure").invoke(null)).isEqualTo(List.of("org.example.cat.domain"));
+        }
+        assertThat(analyse().files().stream().filter(f -> f.source().equals(CONTEXT_SOURCE)).findFirst().orElseThrow().identicalToDestination()).isTrue();
+    }
+
+    @Test void trustedContextExtractionRejectsStaleSourceAndPreservesExistingDestination() throws Exception {
+        trustedContextFixture(); var initial = analyse();
+        var helper = initial.files().stream().filter(f -> f.source().equals(CONTEXT_SOURCE)).findFirst().orElseThrow();
+        write(source(), CONTEXT_SOURCE, Files.readString(source().resolve(CONTEXT_SOURCE)) + "\n// changed");
+        assertThatThrownBy(() -> SourceModuleImport.apply(initial, Set.of(CONTEXT_SOURCE), Set.of(), false, true))
+                .hasMessageContaining("Original source changed");
+        assertThat(target().resolve(helper.destination())).doesNotExist();
+        var analysis = analyse();
+        write(target(), helper.destination(), "// developer-owned file");
+        var current = analysis;
+        assertThatThrownBy(() -> SourceModuleImport.apply(current, Set.of(CONTEXT_SOURCE), Set.of(), false, true))
+                .hasMessageContaining("Destination");
+        assertThat(Files.readString(target().resolve(helper.destination()))).isEqualTo("// developer-owned file");
+    }
+
+    @Test void trustedContextRecoveryRejectsChangedRuntimeConfiguration() throws Exception {
+        trustedContextFixture(); var analysis = analyse();
+        write(target(), "generated/src/main/resources/application.properties", "consumer.connectionFactoryJndiProperties={}\n");
+        assertThatThrownBy(() -> SourceModuleImport.apply(analysis, Set.of(CONTEXT_SOURCE), Set.of(), false, true))
+                .hasMessageContaining("Destination");
+        assertThat(target().resolve("user/src/main/java/" + CONTEXT_BINARY.replace('.', '/') + ".java")).doesNotExist();
+    }
+
+    @Test void alreadyGeneratedTrustedContextDoesNotOfferADuplicate() throws Exception {
+        trustedContextFixture();
+        write(target(), CONTEXT_SOURCE, Files.readString(source().resolve(CONTEXT_SOURCE)));
+        assertThat(analyse().files()).noneMatch(f -> f.destination().contains("$Trusted"));
+    }
+
+    @Test void customContextShapesAreLeftForManualReview() throws Exception {
+        trustedContextFixture();
+        write(source(), CONTEXT_SOURCE, Files.readString(source().resolve(CONTEXT_SOURCE))
+                .replace("extends ActiveMQInitialContextFactory", "extends CustomContextFactory"));
+        var analysis = analyse();
+        assertThat(analysis.files()).noneMatch(f -> f.destination().contains("$Trusted"));
+        assertThat(SourceModuleImport.reviewActions(analysis, Set.of(), Set.of()))
+                .anyMatch(a -> a.subject().contains("Missing runtime context factory: " + CONTEXT_BINARY));
+    }
+
+    @Test void missingTrustedContextSourceProducesAnActionableReview() throws Exception {
+        trustedContextFixture(); Files.delete(source().resolve(CONTEXT_SOURCE));
+        assertThat(SourceModuleImport.reviewActions(analyse(), Set.of(), Set.of()))
+                .anyMatch(a -> a.kind() == SourceModuleImport.ReviewKind.SCAN && a.subject().contains("Missing runtime context factory: " + CONTEXT_BINARY));
+    }
+
     @Test void recommendsExactImplementationsAndHelpersButRequiresReviewOfOriginalWiring() throws Exception {
         fixture(); var analysis = analyse();
         assertThat(analysis.files().stream().filter(SourceModuleImport.FileChoice::recommended).map(SourceModuleImport.FileChoice::destination))
