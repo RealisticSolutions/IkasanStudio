@@ -39,3 +39,11 @@ The stored beta.2 upgrade artifact was verified against its committed checksum:
 ```
 
 The checksum check does not establish that an interactive upgrade was performed. No Linux/Windows/macOS manual matrix, Marketplace upload or signing completion is claimed by this audit.
+
+## Documentation cleanup and rebuild — 18 November
+
+Updated current feature, installation/release-channel, pack coverage and harness limitations guidance. Removed obsolete beta/nightly availability labels and provisional old-ZIP references from the active feature matrix. Retained dated reports as historical evidence, marked retired snapshot/Java 26 instructions clearly and fixed broken local links. Local link checks passed across 55 maintained Markdown documents.
+
+Only Markdown changed. The README fragment used as the packaged Marketplace description and the release change notes are unchanged. Rebuilt with `./gradlew --no-configuration-cache buildPlugin --rerun verifyReleaseArchive --rerun -PstudioSandboxDirectory=build/community-beta3-verification-sandbox` — **PASS**. The resulting ZIP is byte-for-byte identical to the candidate above, with the same SHA-256. Earlier plugin/headless and per-IDE verification results therefore still apply to this exact archive; no functional test rerun was needed for these prose edits.
+
+The draft release evidence bundle includes the rebuild log. This does not waive JetBrains' review of an uploaded plugin update or complete the outstanding signed-artifact/manual checks.

@@ -136,7 +136,7 @@ in this candidate does not imply that it has been published to Marketplace.
 
 ## Scope
 
-Component and tool availability depends on the selected pack. Business implementations and test expectations remain developer-owned. Runtime viewers are read-only; JMS readers require a broker. Supported version migration remains **3.3.9 ↔ 4.1.6**; bundling Ikasan 5 does not add a supported migration path to it.
+Component and tool availability depends on the selected pack. Business implementations and test expectations remain developer-owned. Wiretap and excluded-event viewers are read-only; SFTP deletion requires an explicit action, and JMS readers require a broker. Supported version migration remains **3.3.9 ↔ 4.1.6**; bundling Ikasan 5 does not add a supported migration path to it.
 
 ## Maintaining this matrix
 
