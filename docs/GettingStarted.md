@@ -71,7 +71,7 @@ Pending property edits are preserved; hiding the panels does not apply them.
 
 ### Importing an existing model
 
-For module metadata and separate configuration JSON downloaded from core Ikasan or the Dashboard, select runtime import in the same dialog. See [Importing Ikasan runtime JSON](IkasanRuntimeJson.md) for component choices and settings that need review.
+For module metadata and separate configuration JSON downloaded from core Ikasan or the Dashboard, select runtime import in the same dialog. See [Importing Ikasan runtime JSON](IkasanRuntimeJson.md) for component choices and settings that need review. **Tools → Ikasan Studio → Import Module…** also guides [bespoke source and local configuration import](SourceAssistedModuleImport.md) from the original checkout.
 
 Importing `model.json` from **Create your Ikasan module** regenerates Studio-owned files
 and aligns the root Maven POM with the imported meta-pack: Java 11 for V3.3.9 or Java 17
@@ -79,3 +79,14 @@ for V4.1.6, the Ikasan BOM and required component dependencies. Unrelated Maven 
 are retained. Existing compiler source/target settings (including legacy Java 7 values)
 and an existing `maven.compiler.release` property are updated even when no dependency
 changes are needed. Configure a matching installed JDK if Studio cannot select one.
+
+For a separate local development database, see [independent H2](IndependentH2.md).
+
+### Module port defaults
+
+New modules default the H2 database port to the application HTTP port + 1 and the H2 web
+console port to HTTP + 2. During initial configuration, untouched H2 defaults follow
+HTTP-port edits. Explicit H2 values are preserved. Later HTTP-port edits do not change
+saved H2 ports; use **Default** beside an H2 port to calculate it again. Port fields
+validate the range 1–65535 and reject duplicate local service ports. Derived defaults do
+not reserve ports; check other running projects/services when starting the application.

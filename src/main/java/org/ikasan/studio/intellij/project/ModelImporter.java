@@ -32,8 +32,8 @@ public final class ModelImporter {
 
     private ModelImporter() { }
 
-    public static void openImportDialog(Project project) {
-        new ImportModelJsonDialog(project).show();
+    public static void openImportDialog(Project project, java.awt.Component parent) {
+        new ImportModelJsonDialog(project, parent).show();
     }
 
     /**
@@ -45,6 +45,18 @@ public final class ModelImporter {
      *         recorded meta-pack is not installed
      */
     public static void importFromText(Project project, String json, String sourceDescription) throws StudioBuildException {
+        importFromText(project, json, sourceDescription, null);
+    }
+
+    static void importFromText(Project project, String json, String sourceDescription,
+                               org.ikasan.studio.core.diagnostics.RuntimeImportReport report) throws StudioBuildException {
+        importFromText(project, json, sourceDescription, report, null);
+    }
+
+    static void importFromText(Project project, String json, String sourceDescription,
+                               org.ikasan.studio.core.diagnostics.RuntimeImportReport report,
+                               Runnable afterGeneration) throws StudioBuildException {
+        if (report != null) report.stage(org.ikasan.studio.core.diagnostics.RuntimeImportReport.Stage.VALIDATION);
         if (project.isDisposed()) {
             throw new StudioBuildException("The project is closing; import was not started.");
         }
@@ -58,6 +70,10 @@ public final class ModelImporter {
                 String version = candidate.getVersion();
                 if (version == null || version.isBlank() || !ComponentLibrary.getMetapackList().contains(version)) {
                     throw new StudioBuildException(StudioBundle.message("message.ImportModelMetapackUnavailable", version));
+                }
+                if (!org.ikasan.studio.intellij.settings.IkasanStudioSettings.areSnapshotMetaPacksAllowed()
+                        && ComponentLibrary.isSnapshotRuntime(ComponentLibrary.getMetaPackManifest(version))) {
+                    throw new StudioBuildException(StudioBundle.message("metaPack.SnapshotsDisabled", version));
                 }
                 if (ComponentLibrary.versionNotContained(version)) ComponentLibrary.refreshComponentLibrary(version);
                 javaVersion.set(requiredJava(version));
@@ -80,8 +96,9 @@ public final class ModelImporter {
         }
         java.util.concurrent.CompletableFuture<Void> generation;
         try {
+            if (report != null) report.stage(org.ikasan.studio.core.diagnostics.RuntimeImportReport.Stage.GENERATION);
             generation = StudioProjectFiles.refreshCodeFromModel(project,
-                    org.ikasan.studio.core.generation.GenerationRequest.full());
+                    org.ikasan.studio.core.generation.GenerationRequest.full(), false);
         } catch (RuntimeException failure) {
             uiContext.setIkasanModule(previousModule);
             uiContext.getOptions().setPackageName(previousPackage);
@@ -96,10 +113,12 @@ public final class ModelImporter {
         generation.whenComplete((ignored, failure) -> ApplicationManager.getApplication().invokeLater(() -> {
                     if (project.isDisposed() || uiContext.getIkasanModule() != module) return;
                     if (failure != null) {
+                        if (report != null) report.failure(failure);
                         StudioUIUtils.displayIdeaWarnMessage(project,
                                 StudioBundle.message("message.ImportModelFailed", failure.getMessage()));
                         return;
                     }
+                    if (report != null) report.complete();
                     try {
                         applyMatchingJdk(project, requiredJava);
                     } catch (com.intellij.openapi.progress.ProcessCanceledException cancelled) {
@@ -109,8 +128,19 @@ public final class ModelImporter {
                         StudioUIUtils.displayIdeaWarnMessage(project,
                                 StudioBundle.message("message.ImportModelJdkNotConfigured", requiredJava));
                     }
+                    // Generation has committed and importer/runner JDK settings are now stable.
+                    // Always refresh: an unchanged POM can still have a stale IDE compiler model.
+                    try {
+                        org.jetbrains.idea.maven.project.MavenProjectsManager.getInstance(project)
+                                .forceUpdateAllProjectsOrFindAllAvailablePomFiles();
+                    } catch (RuntimeException refreshFailure) {
+                        LOG.warn("STUDIO: Could not refresh Maven after model import", refreshFailure);
+                        StudioUIUtils.displayIdeaWarnMessage(project,
+                                StudioBundle.message("message.ImportModelMavenRefreshFailed"));
+                    }
                     StudioUIUtils.displayIdeaInfoMessage(project, StudioBundle.message("message.ImportModelSuccess",
                             version, requiredJava > 0 ? String.valueOf(requiredJava) : StudioBundle.message("label.Unknown")));
+                    if (afterGeneration != null) afterGeneration.run();
                 }));
 
         // Render the imported instance; reloading from disk would replace its identity while generation is pending.

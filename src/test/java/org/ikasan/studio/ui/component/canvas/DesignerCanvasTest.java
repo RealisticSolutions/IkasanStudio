@@ -26,10 +26,67 @@ import static org.mockito.Mockito.when;
 class DesignerCanvasTest {
 
     @Test
+    void snapshotChoicesRefreshFromPublishedMetadataWithoutChangingReleasedSelection() throws Exception {
+        Project project = mock(Project.class);
+        var context = mock(org.ikasan.studio.ui.UiContext.class);
+        when(project.getService(org.ikasan.studio.ui.UiContext.class)).thenReturn(context);
+        when(context.getOptions()).thenReturn(new org.ikasan.studio.ui.state.StudioSessionOptions());
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            try (var settings = org.mockito.Mockito.mockStatic(org.ikasan.studio.intellij.settings.IkasanStudioSettings.class)) {
+                var canvas = new DesignerCanvas(project);
+                try {
+                    var field = DesignerCanvas.class.getDeclaredField("metaDataVersionComboBox");
+                    field.setAccessible(true);
+                    var choices = (javax.swing.JComboBox<?>) field.get(canvas);
+                    canvas.setAvailableMetaPacks(List.of("V4.1.6", "Example-SNAPSHOT", "AcmePack"),
+                            java.util.Set.of("Example-SNAPSHOT", "AcmePack"));
+                    assertThat(choices.getItemCount()).isEqualTo(1);
+                    assertThat(choices.getSelectedItem()).isEqualTo("V4.1.6");
+                    settings.when(org.ikasan.studio.intellij.settings.IkasanStudioSettings::areSnapshotMetaPacksAllowed).thenReturn(true);
+                    canvas.refreshMetaPackChoices();
+                    assertThat(choices.getItemCount()).isEqualTo(3);
+                    assertThat(choices.getSelectedItem()).isEqualTo("V4.1.6");
+                    canvas.setSelectedMetapackVersion("Example-SNAPSHOT");
+                    settings.when(org.ikasan.studio.intellij.settings.IkasanStudioSettings::areSnapshotMetaPacksAllowed).thenReturn(false);
+                    canvas.refreshMetaPackChoices();
+                    assertThat(choices.getItemCount()).isEqualTo(1);
+                    assertThat(choices.getSelectedItem()).isEqualTo("V4.1.6");
+                } catch (ReflectiveOperationException failure) {
+                    throw new AssertionError(failure);
+                } finally { canvas.disposeCanvas(); }
+            }
+        });
+    }
+
+    @Test
+    void editorShellAndPublishedPackChoicesDoNotDiscoverResourcesOnTheEdt() throws Exception {
+        Project project = mock(Project.class);
+        var context = mock(org.ikasan.studio.ui.UiContext.class);
+        when(project.getService(org.ikasan.studio.ui.UiContext.class)).thenReturn(context);
+        when(context.getOptions()).thenReturn(new org.ikasan.studio.ui.state.StudioSessionOptions());
+        javax.swing.SwingUtilities.invokeAndWait(() -> {
+            try (var libraries = org.mockito.Mockito.mockStatic(org.ikasan.studio.core.metapack.ComponentLibrary.class);
+                 var resources = org.mockito.Mockito.mockStatic(org.ikasan.studio.core.metapack.loading.MetaPackResources.class)) {
+                var canvas = new DesignerCanvas(project);
+                try {
+                    canvas.setAvailableMetaPacks(List.of("V4.1.6", "AcmePack"), java.util.Set.of());
+                    canvas.refreshMetaPackChoices();
+                    canvas.setSelectedMetapackVersion("AcmePack");
+                    libraries.verifyNoInteractions();
+                    resources.verifyNoInteractions();
+                } finally { canvas.disposeCanvas(); }
+            }
+        });
+    }
+
+    @Test
     void moduleActionsAreConfinedToTheCanvasBackgroundMenu() {
         Project project = mock(Project.class);
         var context = mock(org.ikasan.studio.ui.UiContext.class);
         when(project.getService(org.ikasan.studio.ui.UiContext.class)).thenReturn(context);
+        var h2 = mock(org.ikasan.studio.intellij.execution.IndependentH2RunConfigurationService.class);
+        when(project.getService(org.ikasan.studio.intellij.execution.IndependentH2RunConfigurationService.class)).thenReturn(h2);
+        when(h2.state()).thenReturn(org.ikasan.studio.intellij.execution.IndependentH2RunConfigurationService.State.STOPPED);
         when(context.getViewHandlerFactory()).thenReturn(mock(org.ikasan.studio.ui.viewmodel.ViewHandlerCache.class));
         Module module = mock(Module.class);
         when(module.isInitialised()).thenReturn(true);
@@ -105,8 +162,8 @@ class DesignerCanvasTest {
     @Test
     void fileHistoryIsAvailableOnlyForFileTransferConsumersAndUsesTheirClientId() {
         Project project = mock(Project.class);
-        var sftpService = mock(org.ikasan.studio.intellij.runtime.TestSftpServerService.class);
-        when(project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class)).thenReturn(sftpService);
+        var harnessService = mock(org.ikasan.studio.intellij.execution.HarnessOverrideService.class);
+        when(project.getService(org.ikasan.studio.intellij.execution.HarnessOverrideService.class)).thenReturn(harnessService);
         var context = mock(org.ikasan.studio.ui.UiContext.class);
         when(project.getService(org.ikasan.studio.ui.UiContext.class)).thenReturn(context);
         when(context.getViewHandlerFactory()).thenReturn(mock(org.ikasan.studio.ui.viewmodel.ViewHandlerCache.class));
@@ -128,12 +185,12 @@ class DesignerCanvasTest {
                     assertThat(labels.contains(StudioBundle.message("sftpHarness.title"))).isEqualTo(endpoint.equals("SFTP Endpoint"));
                     assertThat(labels).doesNotContain(StudioBundle.message("sftpHarness.files"));
                     if (endpoint.equals("SFTP Endpoint")) {
-                        when(sftpService.isLocal()).thenReturn(true);
+                        when(harnessService.isEnabled(component)).thenReturn(true);
                         var localMenu = DesignCanvasContextMenu.createCanvasMenu(project, null, component);
                         assertThat(java.util.Arrays.stream(localMenu.getComponents())
                                 .filter(JMenuItem.class::isInstance).map(JMenuItem.class::cast).map(JMenuItem::getText).toList())
                                 .contains(StudioBundle.message("sftpHarness.files"));
-                        when(sftpService.isLocal()).thenReturn(false);
+                        when(harnessService.isEnabled(component)).thenReturn(false);
                     }
                     boolean supported = consumer && !endpoint.equals("JMS Endpoint");
                     assertThat(item.isPresent()).isEqualTo(supported);

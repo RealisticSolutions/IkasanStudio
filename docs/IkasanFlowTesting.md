@@ -65,8 +65,101 @@ helpers are preserved. Normal code generation refreshes the generated FTP test w
 Test teardown preserves the original startup/assertion failure; cleanup failures appear as
 suppressed exceptions rather than replacing the useful diagnosis.
 
-## Comparing business objects
+## Collection-based batches and multiple producers
 
+New scenarios define `createInputOutputBatches(context)` and call `runBatches`. Each batch contains input values
+and a map from producer name to an ordered list of output assertions. The outer list determines the
+number of batches; each input list determines the number of submissions. Output counts are independent:
+filters can emit nothing, splitters can emit several events, and routers can deliver to different producers.
+
+```java
+return List.of(
+    batch(List.of(orderA, orderB), Map.of(
+        "Warehouse", List.of(expectedA),
+        "Rejected orders", List.of(rejectedB))),
+    batch(List.of(orderC), Map.of(
+        "Warehouse", List.of(expectedC),
+        "Rejected orders", List.of())));
+```
+
+Expected lists contain values directly. Business objects must implement `equals` (and matching
+`hashCode`); comparison is not recursive. String expectations use `formatOutputText` to decode the
+actual payload. Override `assertExpectedOutput(expected, actualAfterProducer)` for special comparisons.
+Generated batch tests expose `assertExpectedOutput` immediately above the test method. Place a
+breakpoint on its `Assert.assertEquals(expected, actual)` line to inspect the expected value, the
+raw `actualAfterProducer` payload and the comparison value `actual`. String expectations use the
+text adapter; business objects remain unchanged and use their `equals` implementation. Failures
+retain JUnit's Expected/Actual comparison. The reported failure starts at the actual captured
+`assertExpectedOutput` or `verifyReceivedOutput` frame in the developer-owned test, with flow/batch/producer context in its
+message and the original exception chain retained. Scenario failures include the test class name.
+Expected-path registration failures point to `defineExpectedPath`. Output-count mismatches point to
+the captured construction line of the relevant `batch(...)` or `triggeredBatch(...)` in the test,
+usually in `createInputOutputBatches`. Excess outputs report the producer's expected count and
+an observed lower bound ("at least"), because further outputs may still arrive. Review the expected
+list or the flow implementation, depending on which count is intended. If no developer definition
+frame is available, the original support location is retained. Other setup/processing failures also
+retain their real location; no source line numbers are hard-coded. Refresh shared support to adopt
+this behaviour; generation creates the new `FlowTestFailureDiagnostics` utility if missing.
+
+For local-file input scenarios, input strings identify classpath resource files: the harness copies
+their bytes into a temporary consumer directory, adding a `studio-input-` filename prefix.
+The consumer matches only those fixtures and excludes the scan root itself; the number of batches
+and fixture extensions are unrestricted. Directory payload errors identify the directory and direct
+you to the filename selection in `flowTestProperties()`. Generated text expectations use separate UTF-8
+files under `src/test/resources/<flow>/<producer>/`, while inputs live under `<flow>/<consumer>/`.
+Edit the expected files independently to describe any transformation. Inferred business-object
+outputs retain object expectations instead of text fixtures.
+
+Older `textOutput(...)` wrappers remain supported for compatibility.
+When adopting value-based batches in an existing project, archive the old
+`support/utils/FlowTestBatch.java` as `.java.bak`, then generate tests with shared-support refresh
+so both that utility and `ModuleFlowTestSupport` use the new API. Existing utility files are
+otherwise preserved to protect customisations.
+
+Each expected payload is observed by `afterFlowElement` after its named producer. Ordering is checked
+within each producer, never across branches. An empty expectation list asserts no output during the
+batch's bounded observation; omitting a producer deliberately ignores it. Missing and extra outputs
+fail with the batch and producer identified. Delivery waits use `test.delivery.timeout-seconds`,
+followed by a one-second quiet/readiness window per batch. This is not proof that no event could ever
+arrive later; delayed routes need a custom observation window/scenario.
+
+The runner starts the flow once, submits each batch's input values through `supplyInput(context, harness, input)`,
+checks its outputs and optional receiver assertions, and then moves to the next batch without restarting.
+The sender receives the **input value**, not an implicit 1/2 index. `createInputOutputBatches` runs after Spring
+startup and `prepareFixtures`, so values can depend on beans and temporary services. Empty input lists
+are allowed for observing autonomous work; explicit scheduled triggers can be represented by input
+values whose sender fires the scheduled consumer. Fully autonomous sources still usually suit
+`runObservationTest` better. One batch is valid but does not prove later delivery after an idle period.
+
+For linear one-path-per-input flows, generated path expectations use `.repeat(expectedInputCount())`,
+which sums the input-list sizes. Branching, filtering, splitting and trigger-to-many-event flows require
+custom path expectations; the harness never assumes one input equals one output.
+
+The optional third argument to `runBatches` checks external delivery **once per batch**, after payload
+checks. It receives `(context, batchNumber, definition)`; only this diagnostic/hook batch number is
+one-based. `definition.expectedCount(producer)` and `definition.expectedText(producer, index)` help
+with text delivery checks (output indexes are zero-based). Business-object expectations have no expected text; use `definition.expectedOutputs(producer)`
+for their receiver checks. Generated receiver examples initially assume one
+output per batch; adapt them for multiple files, queue messages or email recipients. Payload checks
+and physical delivery checks remain separate. Captured payloads are references, not deep copies.
+
+The whole JUnit scenario also has a safety timeout, by default `60 + 10 * deliveryTimeoutSeconds` seconds.
+Set `test.scenario.timeout-seconds` explicitly for large collections or slow external endpoints.
+Existing `runTest` calls retain their two-batch behaviour. Refresh shared support to add `runBatches`
+and the missing `FlowTestBatch` utility; existing business tests are preserved unless explicitly regenerated.
+
+For business objects, an output assertion can directly inspect fields:
+
+```java
+batch(List.of(orderA), Map.of("Order sink", List.of(actual -> {
+    assertTrue(actual instanceof Order);
+    assertEquals("ORDER-A", ((Order) actual).reference);
+})))
+```
+
+## Comparing business objects in existing two-batch tests
+
+The following legacy hook remains supported; new collection-based tests use assertion lambdas above.
 Override `assertOutput(Object actual, int batch)` in the business test to assert fields directly.
 The hook receives the original payload observed after the selected producer, on the test thread;
 `formatOutputText` and its decoding flag are not used unless your override calls them.
@@ -85,7 +178,7 @@ protected void assertOutput(Object actual, int batch) {
 
 @Test
 public void testFirstAndLaterDeliveryWithoutRestart() throws Exception {
-    runTest(TEST_REVIEWED, PRODUCER_NAME);
+    runTest(PRODUCER_NAME);
 }
 ```
 
@@ -183,38 +276,37 @@ assertions manually.
 
 ## Numbered tasks in each generated test
 
-Scenario scaffolds have a checklist and **TODO 1–5** beside the relevant code.
-The compact self-generating-source/discard-sink observation scaffold described below needs only
-two tasks: review settings, then enable the test.
+New tests run immediately: there is no `TEST_REVIEWED` flag or review assertion.
+Use the initial run to see which setup and expectations already work, then refine the scenario
+using the **TODO 1–4** beside the relevant code:
 
-For scenario scaffolds:
+1. **Input:** supply first and later input batches in `supplyInput()` or edit the generated input resources.
+2. **Output:** choose the producer and meaningful expected payloads; override `assertOutput()` for business objects.
+3. **Component path:** review `defineExpectedPath()` and any receiver-side, branch or exclusion assertions.
+   Complex paths still report an unfinished expectation setup instead of silently passing.
+4. **Connections:** review `src/test/resources/module-test.properties` and scenario overrides.
 
-1. **Connections:** review common settings in `src/test/resources/module-test.properties` and any scenario overrides in `flowTestProperties()`. For a local-file
-   consumer whose filename property is generated, Studio supplies a JUnit temporary directory
-   and the exact filename-property override. JUnit cleans up that directory. Other endpoints
-   and startup beans still need their own test settings.
-2. **Input:** supply the two input batches. Local-file scaffolds create one file per batch;
-   edit the two sample contents. Other scheduled inputs deliberately fail until their
-   `prepareInputBatch()` is implemented; merely firing a scan creates no input.
-3. **Results:** review the selected producer, expected values and `describeOutput()`.
-   A sole producer is selected automatically. Local-file payload lists are compared using
-   UTF-8 file contents, not temporary paths; custom objects still need meaningful extraction.
-4. **Component path:** review `configureExpectedPath()`. Straightforward linear flows receive
-   a consumer/converter/translator/broker/producer sequence repeated twice, assuming one event
-   per batch. The generated test calls `harness.assertIsSatisfied()` explicitly. Routes,
-   splitters, filters, sequencers, unknown component types and exception-resolution scenarios
-   require an explicit scenario; a guard prevents that unfinished expectation setup from passing.
-   Add receiver-side delivery, branch and exclusion assertions where required.
-5. **Run:** set `TEST_REVIEWED=true` after completing the other tasks and use the supplied Maven command.
+The compact self-generating-source/discard-sink scaffold has two TODOs: review shared settings
+and the producer/payload expectations. It also runs immediately.
+
+Run from IntelliJ or use the supplied Maven command. A passing sample scaffold shows that its
+current assertions passed; replace sample data and expectations to test your business requirements.
+The test starts its configured application and fixtures, so use test endpoints in its settings.
 
 The rule is used explicitly rather than as `@Rule`: the generated test starts it, checks its
 expectations, and stops it in `finally`. Payload assertions and first/idle/later running-state
 checks remain separate from the framework's component-invocation checks. Scheduled tests use
 manual triggers with ordinary scheduling disabled by the harness; they do not verify cron timing.
 
-These are five categories of work, not a promise that complex flows need only five edits.
+These are areas to review, not a promise that complex flows need only four edits.
 Existing developer-owned tests are unchanged; generate a new test, or explicitly archive and
 regenerate an existing one, to get the revised scaffold.
+
+Existing tests with a boolean review argument remain compatible and keep their explicit guard.
+To adopt immediate execution without replacing your business assertions, refresh shared support,
+remove `TEST_REVIEWED` from the `runTest` / `runObservationTest` call, delete any explicit review
+assertion, and remove the unused constant. Alternatively archive and regenerate the scenario.
+Studio detects older shared support that lacks the new overloads and requests a refresh.
 
 ## Generate and complete a test
 
@@ -230,10 +322,9 @@ regenerate an existing one, to get the revised scaffold.
    Commit the new files.
 3. Read `user-flow-tests/README.md`. Fill in isolated test settings, the output producer name,
    input batches and expected payloads. Consult `LOCAL_TEST_ENVIRONMENT.md` for local services.
-   Review application startup beans and connection settings before enabling the test.
-4. Set `TEST_REVIEWED=true` only after completing the scenario. Run from the project root:
-   `mvn -pl user-flow-tests -am test`. Until configured, the test deliberately fails **before**
-   starting Spring or any external services; it does not silently skip or report success.
+   Review application startup beans and connection settings when choosing test endpoints.
+4. Run from IntelliJ or the project root: `mvn -pl user-flow-tests -am test`.
+   No review flag blocks execution; failures identify missing setup, unsupported scenario hooks or mismatched expectations.
 
 The version-specific FreeMarker templates use `IkasanFlowTestRule` to start the real flow,
 attach an output listener, and check first delivery, idle readiness and later delivery without
@@ -281,6 +372,23 @@ Backups retain exact original contents with timestamped `.bak` names. Merge cust
 settings from the backup; regeneration deliberately does not guess how to merge Java edits.
 Existing independent tests still work; explicitly regenerate them to adopt shared setup.
 
+## Splitter path scaffolds
+
+For a linear flow containing splitters, Studio generates the known component path with
+ordinary nested Java loops. The outer loop covers each input across the supplied batches;
+each splitter introduces a loop around its downstream components. This avoids nesting the
+Ikasan harness's single-block `blockStart()`/`repeat()` API.
+
+Each `expectedSplitItemsN` starts at **1 as an explicit example**, with a review TODO beside
+its splitter. Set it to the expected number of items from that invocation. If counts vary,
+use `inputIndex` and the enclosing `splitItemN` indices (all zero-based) to express the
+fixture-specific counts. Expected producer values remain in `createInputOutputBatches()`;
+the final output count cannot establish intermediate splitter counts. Counts are not
+inferred by running the implementation being tested.
+
+Selection uses the component type metadata. Flows containing routers, ordinary filters,
+unknown invocation types or exception resolvers retain the manual-path guard.
+
 ## Short scenarios and JMS tests
 
 `ModuleFlowTestSupport.verifyFlow(...)` owns listener attachment, the Ikasan rule, two deliveries,
@@ -292,9 +400,52 @@ later valid input when checking recovery. The helper waits for framework expecta
 RUNNING before teardown. A missing output alone does not prove exclusion: also inspect stored exclusions.
 
 For a configured Spring JMS **queue** consumer, generation adds `JmsFlowTestSupport` and
-`ModuleJmsTestConfig`. The scenario sends text messages through a real connection. If the sole producer
+`ModuleJmsTestConfig`. The scenario sends messages through a real connection. Text is the default starting fixture. If the sole producer
 is also a configured Spring JMS queue producer, it additionally receives/asserts the actual output
 text for each batch. Otherwise, add external receiver checks where needed.
+
+When the initial processing component expects a JMS **MapMessage**, or narrows a raw JMS
+Message to MapMessage, the scaffold creates `Map<String, Object>` inputs and calls
+`jms.sendMap(queue, input)`. The helper creates a real JMS MapMessage with `setObject` entries.
+Review the sample `content`, `id` and `fileName` keys against the converter configuration.
+`sendText` creates a TextMessage; `sendObject(map)` creates an ObjectMessage. Neither substitutes
+for a MapMessage. Inference stops at the first non-pass-through processing component; it does
+not look through arbitrary conversions. Existing developer-owned scenarios and helpers are
+preserved: adopt `sendMap` through a reviewed helper update and adjust the scenario's input type,
+fixtures and sender together. The helper rejects null fixtures and propagates JMS errors for
+unsupported map values; JMS map entries support primitive wrappers, String and byte arrays.
+
+When the initial processing component is **JMS Object Message To Object Converter** (allowing
+metadata-declared pass-through debug filters before it), the scaffold instead calls
+`jms.sendObject(queue, input)`. Populate the input payloads directly in `createInputOutputBatches`,
+alongside each batch's expected outputs. For a known business class, the scaffold imports the type and supplies `new Type()` with a TODO to
+populate its fields; adjust the constructor if it requires arguments or a factory method. Studio
+cannot infer valid business values or constructor availability from the type hint. Unknown types
+retain `Serializable` null placeholders with a message naming the missing fixture. There is no
+batch-number factory.
+For a domain class with a suitable constructor, an input can be written directly as
+`batch(List.of(new Order("ORDER-A", 101, 2)), Map.of(PRODUCER_NAME, List.of(expectedXml)))`.
+Inference stops at unknown transformations and does not search through branches; review input types
+for other arrangements rather than assuming the default text fixture is suitable.
+
+Object-message receivers must trust the intended business packages; keep the normal explicit
+allowlist rather than trusting every package. See [JMS object messages](JmsObjectMessages.md).
+
+Shared support now captures component-invocation exceptions in the selected test flow. It reports
+the flow, component, entering payload type and underlying cause on the test thread, with an
+ObjectMessage hint for the standard unwrapping converter. The original exception still reaches
+Ikasan's error policy and remains attached as the assertion cause. Standard output waits check for
+failures at short intervals, so these errors do not simply become missing-output timeouts. This
+captures invocation failures, not every consumer connection or application startup error. Custom
+failure/recovery scenarios that deliberately expect exceptions should use their own observation
+rather than these success-scenario helpers.
+
+**Existing tests:** refresh shared support through **Generate Flow Test** to install failure capture.
+Utilities remain developer-owned: if your existing `support/utils/JmsFlowTestSupport.java` lacks
+`sendObject`, rename it to a backup with a non-`.java` extension, then generate again to recreate the
+missing helper (review/reapply any customisations). Use **Skip Existing** to retain business tests
+and manually adapt their `supplyInput`, or explicitly archive/regenerate the scenario to receive the
+new fixture TODO. Regeneration cannot populate your business object's fields or expected output.
 
 When JMS consumers share one configured embedded (`vm://`) broker, generation supplies
 `test.jms.broker-url` as a Spring reference to the consumer's provider-URL property. This keeps
@@ -305,7 +456,7 @@ multiple distinct broker URLs require deliberate configuration.
 Set `test.jms.broker-url` (and optional username/password) in `module-test.properties`, and point the
 flow's connection/destination overrides at the same isolated broker and dedicated queues. Input and
 output queues must be distinct. The helper uses physical queue names; adapt JNDI aliases explicitly.
-The supplied configuration uses ActiveMQ; other vendors, topics, object/binary messages, selectors,
+The supplied configuration uses ActiveMQ; other vendors, topics, binary messages, selectors,
 custom factories and routes require deliberate adaptation. Existing properties files are preserved:
 add the new `test.jms.*` keys yourself if needed. No broker-wide purge is performed.
 
@@ -399,7 +550,7 @@ New flow tests override `getFlowName()` and `defineExpectedPath()` and delegate 
 scenario to `runTest(...)`. The base class checks the setup guard before opening a fresh context,
 then closes it on success or failure. Override `formatOutputText(Object)` only when the default text
 representation is unsuitable. Local-file tests use the shared file-content decoder.
-For complex scenarios, `runTest(TEST_REVIEWED, context -> { ... })` supplies the same context lifecycle
+For complex scenarios, `runTest(context -> { ... })` supplies the same context lifecycle
 while leaving input and assertions explicit. Existing direct `verifyFlow`/`verifyScenario` callers
 remain supported. Regenerate shared module setup when generating tests that use these new helpers.
 
@@ -407,7 +558,7 @@ remain supported. Regenerate shared module setup when generating tests that use 
 
 For a direct Event Generating Consumer → Dev Null Producer using the built-in provider,
 the meta-pack selects a compact observation test. It has no `supplyInput()` or expected-payload
-placeholders: review shared settings, then enable it. The test checks the initial payload sequence declared by the meta-pack (`Test Message 1`,
+placeholders: review shared settings and the observation expectations. The test checks the initial payload sequence declared by the meta-pack (`Test Message 1`,
 `Test Message 2`, `Test Message 3` for the bundled built-in providers), continued running and a
 fresh later invocation without restarting. Only the initial samples are retained; later events
 are counted. It verifies that the isolated test flow stops during teardown. This checks initial
@@ -423,13 +574,9 @@ Generated JUnit methods start with `test`, for example
 the name is for readability. Existing developer-owned tests are preserved. To adopt the new
 scaffold, archive/regenerate the selected flow test and shared module setup.
 
-Standard generated scenarios call `runTest(TEST_REVIEWED, PRODUCER_NAME, FIRST_EXPECTED_OUTPUT, SECOND_EXPECTED_OUTPUT)`.
-Override `supplyInput(context, harness, batch)` to provide each batch, and optionally
-`verifyReceivedOutput(context, batch, expected)` for external delivery checks. The support class
-calls these methods directly through its standard scenario wiring; no method references or lambdas
-are needed in the concrete test. JMS scaffolds supply both overrides when a single output queue
-is known, opening and closing a helper connection for each operation. Advanced callback overloads
-remain available, and older callback-based tests still work with regenerated shared support.
+Standard generated scenarios now call `runBatches(this::createInputOutputBatches, this::supplyInput)` with an
+optional receiver-check callback. Two example definitions are supplied initially; add or remove
+batch definitions rather than changing a separate count. Older `runTest` overloads still work.
 
 ### Generic Consumer sample timing
 
@@ -553,15 +700,14 @@ paths. Generation creates missing resource directories and `first.txt` / `second
 for resource-based inputs and file/email expected outputs. Their initial contents are
 `first expected payload` and `second expected payload`, without trailing newlines.
 Existing directories and files are preserved, including when regenerating a test.
-Replace sample contents with meaningful input and independent expected output fixtures before
-setting `TEST_REVIEWED=true`. Missing resources after changing paths produce an actionable error.
+Replace sample contents with meaningful input and independent expected output fixtures as you refine the test. Missing resources after changing paths produce an actionable error.
 Regenerate the affected tests, `ModuleFlowTestSupport`, `FtpInputFixture` and
 `FileDeliveryAssertions` together using archive-and-replace to adopt these defaults.
 
 The shared FTP directory uses `TemporaryFolder.builder().assureDeletion().build()`: failure to
 remove it fails the test. The folder encloses the shared timeout rule. Both FTP consumer input
 creation and FTP producer delivery assertions use `localFtpDirectory(context)`, so they retain
-the same directory throughout a scenario and its two batches. Server startup receives a fresh
+the same directory throughout a scenario and all its batches. Server startup receives a fresh
 subdirectory for each application context. Server shutdown does not delete files; JUnit removes
 them after the test, including ordinary assertion failures. A forcibly terminated JVM can still
 leave temporary files behind. Regenerate shared support together with `LocalFtpTestServer`;
@@ -613,9 +759,24 @@ mailbox delivery per batch and compares exact decoded text; adapt the assertion 
 recipients, MIME alternatives or attachments. `receivedMessages()` exposes captured messages
 for subject, address and attachment assertions. Input and expected files remain developer-owned.
 
+For multiple recipients, keep the scenario's assertion small:
+
+```java
+localSmtpServer(context).assertBatchBodies(List.of(expected, expected), deliveryTimeout(context));
+```
+
+This example expects two mailbox copies for the current batch. The helper retains earlier
+expectations, decodes multipart text bodies while skipping attachments, and compares the
+cumulative inbox without assuming mailbox order. Supply only the current batch's bodies;
+include duplicates for recipient copies. It checks counts and bodies, not recipient addresses
+or subjects, and detects extra messages present when the assertion runs. Use this helper
+consistently from the first batch; do not mix its history with `assertBody` calls.
+Existing utility files are preserved during regeneration. To adopt this helper in an older
+project, archive `support/utils/LocalSmtpTestServer.java` outside the Java source set (or rename
+it to `.java.bak`), then generate the missing support utility and review any custom changes.
+
 For an existing flow such as Flow2, regenerate the test and shared support with both FTP and
-SMTP options selected, approve backups, supply the expected email-body resources, then set
-`TEST_REVIEWED=true`. Choosing not to use the SMTP option preserves current settings; to disable
+SMTP options selected, approve backups, supply the expected email-body resources, then run the test. Choosing not to use the SMTP option preserves current settings; to disable
 an existing fixture, explicitly set `test.smtp.enabled=false` and provide external-server
 configuration and receiver assertions.
 
@@ -683,7 +844,7 @@ set a positive value only when deliberately testing age filtering.
 SFTP inputs use `/flow_name/consumer_name/first.txt` and `second.txt` resources, with missing
 samples created during generation. Each resource is copied into the endpoint's temporary
 server directory before the consumer is triggered. Filenames must match the model's
-`filenamePattern`. The same flow processes both batches without restarting.
+`filenamePattern`. The same flow processes all batches without restarting.
 
 `localSftpDirectory(context, FLOW_NAME, componentName)` exposes a separate directory for each
 endpoint. Generated producer tests use it with `assertDeliveredFileResources` to verify real
@@ -705,7 +866,7 @@ For a Scheduled Consumer using its default Quartz message provider, the scaffold
 `ScheduledEventFixture.fire(harness, consumerName, text)` to send each batch through the real
 consumer immediately. The event remains a `JobExecutionContext`, with fixture text in
 `ScheduledEventFixture.TEXT_KEY`; the generated `formatOutputText` reads that text for comparison.
-The harness suppresses normal cron firing and keeps the same flow running for both batches.
+The harness suppresses normal cron firing and keeps the same flow running for all batches.
 
 When a broker obtains its own business data, prepare its database/service fixture and use
 `ScheduledEventFixture.fire(harness, consumerName)` instead. This fires the same deterministic
@@ -739,7 +900,7 @@ names, fixtures and assertions. Studio renames now refactor recognised reference
 producer arguments, generated property lookups and explicit fixture resource constants. Matching
 fixture directories move with their contents; existing destination directories block the rename.
 Exact property keys and placeholder references in `module-test.properties` are updated while
-preserving their values. Custom assertions, expected payload values and `TEST_REVIEWED` are retained.
+preserving their values. Custom assertions and expected payload values are retained.
 When a flow is renamed, a test class and file still using the generated `<FlowJavaName>FlowTest`
 name are renamed together using IntelliJ Java refactoring. Java references and supported run
 configurations follow the rename; a conflicting destination blocks it. Custom test class names
@@ -805,6 +966,11 @@ shared support too when Studio flags it; rebuilding properties does not repair c
 or expectations inside business tests. The selected local FTP/SFTP/SMTP options are applied to
 the fresh properties after generation.
 
+Property refresh retains the existing `test.ftp.enabled`, `test.sftp.enabled` and `test.smtp.enabled`
+choices for the whole module, including flows not selected for generation. Other custom settings
+remain in the archived properties file for review. Selecting a local fixture can enable it after
+refresh; to switch to an external server, explicitly set its enabled property to `false`.
+
 
 ### Preparing and cleaning up instance fixtures
 
@@ -866,3 +1032,93 @@ for inspection. Number batches from 1 for each directory/glob pair; failed check
 history. `runTest` resets history per scenario. Custom scenarios can call
 `resetFileDeliveryBatches()`. For intentional filename overwrites, use `assertFileMatchesResource`.
 The older overload without a batch number retains its cumulative-expectation semantics.
+
+### Timer triggers and debug components
+
+For a timer consumer whose broker obtains its own business data, use
+`triggeredBatch(Map.of(PRODUCER_NAME, List.of(expectedValue)))`. Each definition
+fires one deterministic timer event; no dummy input is needed. Prepare the broker's
+source in `prepareFixtures` when necessary. The default trigger supports the standard
+scheduled-context provider; custom providers can override `triggerBatch`.
+The scaffold selects this form for scheduled-context flows containing a broker.
+
+`batch(inputs, outputs)` supplies each input. `batch(List.of(), outputs)` only observes;
+it neither supplies input nor fires a timer. Timer fixture-text scenarios can continue
+to use ordinary input batches. `expectedInputCount()` includes explicit triggers.
+
+Studio debug components still execute and can hit breakpoints, but are excluded from
+expected-path checks. Identification comes from model metadata in generated test wiring,
+not component names. Ordinary business filters and failures in debug components remain
+subject to verification. Existing explicit debug-filter path entries are ignored too.
+Refresh shared support and regenerate application code/resources to obtain this behaviour;
+developer-owned test definitions are preserved.
+
+### Editable filter paths
+
+For a linear flow with business filters, the scaffold generates the known component
+sequence with `expectedFilterPassesN` decisions. Each defaults to `true` as a clearly
+labelled example. Set the expected decision for each input (`inputIndex` is zero-based
+across all batches), or for each split item where filters follow a splitter.
+The filter itself is always expected when reached; rejection skips the following
+nested block. These decisions describe expected behaviour and do not execute or reuse
+the production filter logic.
+
+Adjust producer expectations and external receiver checks to match accepted events.
+Use an empty list for a named producer to assert no output, rather than `Map.of()`,
+which skips output checks. Unsupported combinations and exception-resolution paths still require
+manual scenario definitions. Existing developer-owned tests are not automatically rewritten.
+
+Receiver hooks generated for batch tests now take `List<String> expected`, rather than
+indexing the first expectation. Named producers with an empty list require no delivery
+for a one-second bounded observation window; an omitted producer skips its receiver check.
+JMS checks all messages in order and then checks for extras. SMTP expands each expected
+body by the configured recipient count; file checks retain cumulative delivery history.
+Legacy single-value hooks remain available for older tests. When adapting an existing
+batch test, use `definition.expectedTexts(PRODUCER_NAME)` and update the receiver hook's
+parameter to `List<String>`; refresh shared support too. An invalid `expectedText` index
+now identifies the producer, expected count and receiver method to update.
+
+### Editable router paths
+
+Router scaffolds list every known branch once per input, using plain harness calls with
+begin/end route comments. This is an editable starting assumption, not inferred business
+behaviour. For a single-recipient router, keep or condition only the branch expected for
+that input. For multi-recipient routers, retain the selected branches in invocation order.
+Match producer output expectations to the paths you choose. Nested routers are expanded
+in the same way. Visual route endpoints and Studio debug components are not runtime path steps.
+The harness checks invocation order; this scaffold does not establish ordering for
+concurrently executed routes. Branches containing splitters, business filters, unsupported
+components or exception resolvers retain the manual guard.
+
+### When expected text meets a business object
+
+If an expected value is a `String` but the observed payload is an unsupported business
+object such as `Order`, batch verification reports both Java types and identifies the
+producer and output. For example: `Expected: String (java.lang.String). Actual: Order
+(com.example.Order). No text mapping is defined for this output.` Define the intended
+text mapping in `formatOutputText(Object)`, or compare the business object's fields or
+values in `assertExpectedOutput(Object, Object)`. A difference in Java types alone does
+not fail the test: supported or developer-provided text mappings still run normally.
+
+This diagnostic preserves the original cause and the captured assertion source location.
+Malformed text, missing files and custom assertion failures retain their own explanations.
+Existing scenarios receive it when Studio refreshes generated flow-test support files;
+developer-owned tests and expected business values do not need to be overwritten.
+
+### Run from the canvas
+
+Right-click a flow and choose **Run Flow Test** to run its existing generated test class
+in IntelliJ's Run tool window. Studio reuses a matching IDE run configuration when
+available, preserving its settings; otherwise IntelliJ creates a temporary configuration.
+The action waits for indexing and uses the test's owning module and SDK. Generate the
+test first, and allow Maven to import `user-flow-tests`. The action runs the saved test
+scenario; it does not regenerate code, replace expectations or start the normal module
+application. **Jump to Flow Test** remains available for editing the scenario.
+
+### Renaming with unsaved test edits
+
+When **Update Code** renames a component or flow, Studio saves affected test documents
+before preparing their reference updates. It then inspects the saved files again, so
+format-on-save changes are included in the plan. Developer-written assertions and edits
+are preserved; unrelated unsaved files are left alone. If an affected file cannot be
+saved, Studio cancels the rename with guidance before changing the model or references.

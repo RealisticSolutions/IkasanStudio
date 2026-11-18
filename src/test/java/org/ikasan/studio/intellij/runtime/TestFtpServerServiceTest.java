@@ -25,6 +25,100 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("UseOptimizedEelFunctions")
 class TestFtpServerServiceTest {
     @Test
+    void projectsUseIndependentPortsAndFilesAndRemainReadyForLaterDelivery(@TempDir Path directory) throws Exception {
+        var first = new TestFtpServerService(projectAt(directory.resolve("first")));
+        var second = new TestFtpServerService(projectAt(directory.resolve("second")));
+        try {
+            assertThat(first.localConfiguration().port()).isZero();
+            org.assertj.core.api.Assertions.assertThatThrownBy(first::launchProperties).isInstanceOf(IllegalStateException.class);
+            Path firstRoot = first.startLocal();
+            Path secondRoot = second.startLocal();
+            var firstAddress = first.localConfiguration();
+            assertThat(first.listeningEndpoint()).isEqualTo(new HarnessStopImpact.Endpoint("FTP", firstAddress.host(), firstAddress.port()));
+            var secondAddress = second.localConfiguration();
+            assertThat(firstAddress.port()).isPositive().isNotEqualTo(secondAddress.port());
+            assertThat(secondAddress.port()).isPositive();
+            assertThat(first.startLocal()).isEqualTo(firstRoot);
+            assertThat(first.localConfiguration()).isEqualTo(firstAddress);
+            assertThat(first.launchProperties().get("studio.harness.ftp.port")).isEqualTo(Integer.toString(firstAddress.port()));
+            assertThat(second.launchProperties().get("studio.harness.ftp.port")).isEqualTo(Integer.toString(secondAddress.port()));
+            assertThat(first.launchProperties().get("studio.harness.ftp.home")).isEqualTo(firstRoot.toString());
+            assertThat(firstRoot).isNotEqualTo(secondRoot);
+
+            transferAndReadBack(firstAddress, "payload.txt", "first project");
+            transferAndReadBack(secondAddress, "payload.txt", "second project");
+            assertThat(Files.readString(firstRoot.resolve("payload.txt"))).isEqualTo("first project");
+            assertThat(Files.readString(secondRoot.resolve("payload.txt"))).isEqualTo("second project");
+            assertThat(first.isRunningAt(firstAddress)).isTrue();
+            assertThat(second.isRunningAt(secondAddress)).isTrue();
+            // Later delivery uses the same live servers, without reset or restart.
+            transferAndReadBack(firstAddress, "later.txt", "later delivery");
+            first.stop();
+            assertThat(first.listeningEndpoint()).isNull();
+            assertThat(first.localConfiguration().port()).isZero();
+            org.assertj.core.api.Assertions.assertThatThrownBy(first::launchProperties).isInstanceOf(IllegalStateException.class);
+            transferAndReadBack(secondAddress, "later.txt", "second still running");
+            assertThat(second.isRunningAt(secondAddress)).isTrue();
+            first.startLocal();
+            assertThat(first.localConfiguration().port()).isPositive().isNotEqualTo(secondAddress.port());
+            assertThat(first.launchProperties().get("studio.harness.ftp.port"))
+                    .isEqualTo(Integer.toString(first.localConfiguration().port()));
+        } finally { first.stop(); second.stop(); }
+    }
+
+    @Test
+    void explicitServerIsNotSilentlyReplacedByLocalOverrides(@TempDir Path directory) throws Exception {
+        var service = new TestFtpServerService(projectAt(directory));
+        try {
+            var explicit = new TestFtpServerConfiguration("127.0.0.1", availablePort(), "original", "password");
+            service.start(explicit);
+            org.assertj.core.api.Assertions.assertThatThrownBy(service::startLocal).isInstanceOf(IllegalStateException.class);
+            org.assertj.core.api.Assertions.assertThatThrownBy(service::launchProperties).isInstanceOf(IllegalStateException.class);
+            assertThat(service.isRunningAt(explicit)).isTrue();
+        } finally { service.stop(); }
+    }
+
+    private static Project projectAt(Path directory) {
+        var project = mock(Project.class);
+        when(project.getBasePath()).thenReturn(directory.toString());
+        when(project.getService(UiContext.class)).thenReturn(mock(UiContext.class));
+        return project;
+    }
+
+    /** Exercise both FTP producer delivery and consumer retrieval over real passive data connections. */
+    private static void transferAndReadBack(TestFtpServerConfiguration configuration, String filename, String payload) throws Exception {
+        try (Socket socket = new Socket(configuration.host(), configuration.port());
+             var reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+             var writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+            socket.setSoTimeout(5000);
+            assertThat(reader.readLine()).startsWith("220");
+            command(writer, "USER " + configuration.username()); assertThat(reader.readLine()).startsWith("331");
+            command(writer, "PASS " + configuration.password()); assertThat(reader.readLine()).startsWith("230");
+            command(writer, "TYPE I"); assertThat(reader.readLine()).startsWith("200");
+            try (Socket data = passive(configuration, reader, writer)) {
+                command(writer, "STOR " + filename); assertThat(reader.readLine()).startsWith("150");
+                data.getOutputStream().write(payload.getBytes(StandardCharsets.UTF_8));
+            }
+            assertThat(reader.readLine()).startsWith("226");
+            try (Socket data = passive(configuration, reader, writer)) {
+                command(writer, "RETR " + filename); assertThat(reader.readLine()).startsWith("150");
+                assertThat(new String(data.getInputStream().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(payload);
+            }
+            assertThat(reader.readLine()).startsWith("226");
+            command(writer, "QUIT"); assertThat(reader.readLine()).startsWith("221");
+        }
+    }
+
+    private static Socket passive(TestFtpServerConfiguration configuration, BufferedReader reader, BufferedWriter writer) throws Exception {
+        command(writer, "PASV");
+        String response = reader.readLine(); assertThat(response).startsWith("227");
+        String[] address = response.substring(response.indexOf('(') + 1, response.indexOf(')')).split(",");
+        var socket = new Socket(configuration.host(), Integer.parseInt(address[4]) * 256 + Integer.parseInt(address[5]));
+        socket.setSoTimeout(5000);
+        return socket;
+    }
+
+    @Test
     void startsAuthenticatesAndStopsAnEmbeddedServer(@TempDir Path projectDirectory) throws Exception {
         Project project = mock(Project.class);
         UiContext uiContext = mock(UiContext.class);

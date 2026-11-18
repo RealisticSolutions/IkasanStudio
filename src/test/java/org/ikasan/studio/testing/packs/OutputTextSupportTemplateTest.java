@@ -20,11 +20,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class OutputTextSupportTemplateTest {
     @TempDir Path root;
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6"}) @Timeout(30)
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"}) @Timeout(30)
     void convertsContentAndRejectsUnsafeFallbacks(String version) throws Exception {
+        Path templates = version.equals("V5.1.0")
+                ? Path.of("headless/studio-pack-v5-release/src/main/resources/studio/metapack", version, "templates/org/ikasan/studio/generator")
+                : Path.of("src/main/resources/studio/metapack", version, "templates/org/ikasan/studio/generator");
         Path source = root.resolve("OutputTextSupport.java");
-        Files.writeString(source, Files.readString(Path.of("src/main/resources/studio/metapack", version,
-                "templates/org/ikasan/studio/generator/outputTextSupportTemplate_en.ftl")));
+        Files.writeString(source, Files.readString(templates.resolve("outputTextSupportTemplate_en.ftl")));
         String namespace = version.equals("V3.3.9") ? "javax.jms" : "jakarta.jms";
         // Minimal public contracts exercise proxy/interface recognition without requiring optional endpoint jars.
         Path payload = root.resolve("Payload.java");
@@ -76,6 +78,14 @@ class OutputTextSupportTemplateTest {
             });
             assertEquals("message body", stringify.invoke(null, jms));
             assertEquals(List.of("getText"), calls);
+            for (Object directoryPayload : List.of(root, root.toFile(), List.of(file.toFile(), root.toFile()))) {
+                var failure = assertThrows(InvocationTargetException.class, () -> stringify.invoke(null, directoryPayload));
+                assertInstanceOf(IllegalArgumentException.class, failure.getCause());
+                assertTrue(failure.getCause().getMessage().contains(root.toString()));
+                assertTrue(failure.getCause().getMessage().contains("directory"));
+                assertTrue(failure.getCause().getMessage().contains("flowTestProperties()"));
+                assertFalse(failure.getCause().getMessage().contains("use UTF-8"));
+            }
             fails(stringify, new Object());
             fails(stringify, new byte[]{(byte) 0xc3, (byte) 0x28});
             fails(stringify, root.resolve("missing"));

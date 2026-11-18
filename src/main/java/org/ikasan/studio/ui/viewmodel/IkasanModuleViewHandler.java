@@ -13,7 +13,9 @@ import javax.swing.*;
 import java.awt.*;
 
 public class IkasanModuleViewHandler extends AbstractViewHandlerIntellij {
-    private static final int TEST_FTP_SERVER_LEFT_RESERVE = 110;
+    // A file-server card and connector need their own column beyond the fixed
+    // transport buttons and status hover area at the left of the canvas.
+    private static final int FILE_SERVER_LEFT_RESERVE = 110;
     public static final int FLOW_X_RIGHT_BUFFER = 260;
     public static final int FLOW_Y_BOTTTOM_BUFFER = 180;
     public static final int SCROLL_BAR_HEIGHT = 10;
@@ -65,7 +67,7 @@ public class IkasanModuleViewHandler extends AbstractViewHandlerIntellij {
 
     // Might revert to centralised model but that will require double initialise.
     private int getFlowXStartPoint() {
-        return flowXStartPoint() + (hasVisibleTestFtpServer() ? TEST_FTP_SERVER_LEFT_RESERVE : 0);
+        return flowXStartPoint(flowXStartPoint(), hasVisibleLeftFileServer(project, module));
     }
 
     /**
@@ -92,21 +94,29 @@ public class IkasanModuleViewHandler extends AbstractViewHandlerIntellij {
         return owner != null && !owner.toString().isBlank();
     }
 
-    /**
-     * True only when a Test FTP Server node will actually be drawn to the LEFT of the flows, i.e. when a running
-     * test server is feeding at least one FTP Consumer - that is the only case needing room reserved on the left.
-     * A test server used purely by FTP Producers is drawn on the RIGHT instead (see
-     * {@code DesignerCanvas#paintTestFtpServerNode}) and must not shift every flow rightwards.
-     */
-    private boolean hasVisibleTestFtpServer() {
-        TestFtpServerService service = project.getService(TestFtpServerService.class);
-        if (!service.isRunning()) return false;
-        for (TestFtpServerLinks.Link link : TestFtpServerLinks.findLinks(module)) {
-            if (!link.consumers().isEmpty() && service.isRunningAt(link.configuration())) {
-                return true;
+    /** Reserve space only for a running server actually drawn to the left of a consumer. */
+    static boolean hasVisibleLeftFileServer(Project project, Module module) {
+        var ftp = project.getService(TestFtpServerService.class);
+        if (ftp.isRunning()) {
+            for (var link : TestFtpServerLinks.findLinks(module)) {
+                for (var consumer : link.consumers()) {
+                    if (ftp.isRunningAt(org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effectiveFtp(project, consumer)))
+                        return true;
+                }
             }
         }
-        return false;
+        var sftp = project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class);
+        return sftp.isRunning() && module.getFlows().stream()
+                .flatMap(flow -> flow.getFlowElementsNoExternalEndPoints().stream())
+                .anyMatch(element -> element.getComponentMeta().isConsumer()
+                        && "SFTP Endpoint".equals(element.getComponentMeta().getEndpointKey())
+                        && org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effective(project, element));
+    }
+
+    static int flowXStartPoint(int configured, boolean leftFileServer) {
+        return leftFileServer
+                ? Math.max(configured, IkasanStudioSettings.DEFAULT_FLOW_X_START_POINT) + FILE_SERVER_LEFT_RESERVE
+                : configured;
     }
 
     /**

@@ -89,6 +89,15 @@ public final class TestMailServerSessionService implements Disposable {
         ownedHarnesses.remove(host + ":" + port);
     }
 
+    /** Cached readiness only: safe to read from toolbar updates on the EDT. */
+    public boolean hasAnyOwnedListening() {
+        return ownedHarnesses.keySet().stream().anyMatch(listeningAddresses::contains);
+    }
+
+    public java.util.List<HarnessStopImpact.Endpoint> ownedEndpoints() {
+        return ownedHarnesses.values().stream().map(owned -> new HarnessStopImpact.Endpoint("SMTP", owned.host(), owned.port())).toList();
+    }
+
     public boolean hasAnyOwned() {
         return !ownedHarnesses.isEmpty();
     }
@@ -145,6 +154,8 @@ public final class TestMailServerSessionService implements Disposable {
         Module ikasanModule = disposed || project.isDisposed() ? null : project.getService(UiContext.class).getIkasanModule();
         if (ikasanModule != null) {
             List<TestMailServerLinks.Link> links = TestMailServerLinks.findLinks(ikasanModule);
+            if (!links.isEmpty() && listeningProbe.test(TestMailServerLinks.DEFAULT_SMTP_HOST, TestMailServerLinks.DEFAULT_SMTP_PORT))
+                nowListening.add(TestMailServerLinks.DEFAULT_SMTP_HOST + ":" + TestMailServerLinks.DEFAULT_SMTP_PORT);
             for (TestMailServerLinks.Link link : links) {
                 if (listeningProbe.test(link.host(), link.port())) {
                     nowListening.add(link.address());

@@ -14,7 +14,7 @@ import static org.mockito.Mockito.when;
 class IkasanDebugSessionServiceTest {
 
     @Test
-    void recognisesOnlyStudioApplicationWithDebugExecutorAndProfile() {
+    void recognisesStudioApplicationWithDebugExecutor() {
         ExecutionEnvironment environment = environment(
                 IkasanRunConfigurationService.MAIN_CLASS_NAME,
                 IkasanRunConfigurationService.STUDIO_DEBUG_PROGRAM_PARAMETERS);
@@ -38,12 +38,22 @@ class IkasanDebugSessionServiceTest {
     }
 
     @Test
-    void rejectsDebugLaunchWithoutStudioDebugProfile() {
+    void recognisesDebugLaunchWithoutStudioDebugProfile() {
         ExecutionEnvironment environment = environment(
                 IkasanRunConfigurationService.MAIN_CLASS_NAME, null);
 
         assertThat(IkasanDebugSessionService.isStudioDebugExecution(
-                DefaultDebugExecutor.EXECUTOR_ID, environment)).isFalse();
+                DefaultDebugExecutor.EXECUTOR_ID, environment)).isTrue();
+    }
+
+    @Test
+    void recognisesDebugLaunchWithAdditionalArguments() {
+        var environment = environment(IkasanRunConfigurationService.MAIN_CLASS_NAME,
+                IkasanRunConfigurationService.STUDIO_DEBUG_PROGRAM_PARAMETERS + " --server.port=12450");
+        assertThat(IkasanDebugSessionService.isStudioDebugExecution(
+                DefaultDebugExecutor.EXECUTOR_ID, environment)).isTrue();
+        assertThat(IkasanDebugSessionService.isStudioDebugExecution(
+                DefaultRunExecutor.EXECUTOR_ID, environment)).isFalse();
     }
 
     @Test

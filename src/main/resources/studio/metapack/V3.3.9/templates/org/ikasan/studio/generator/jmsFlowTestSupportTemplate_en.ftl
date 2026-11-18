@@ -15,7 +15,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-/** Queue/text-message helper. Use isolated test destinations, not production queues or topics. */
+/** Queue text/object-message helper. Use isolated test destinations, not production queues or topics. */
 public final class JmsFlowTestSupport implements AutoCloseable {
     private final Connection connection;
     private final Session session;
@@ -64,6 +64,24 @@ public final class JmsFlowTestSupport implements AutoCloseable {
         finally { producer.close(); }
     }
 
+    /** Sends JMS map entries as a MapMessage, never as an ObjectMessage containing a Java Map. */
+    public void sendMap(String queue, java.util.Map<String, ?> entries) throws JMSException {
+        if (entries == null) throw new IllegalArgumentException("Supply non-null JMS map entries");
+        javax.jms.MapMessage message = session.createMapMessage();
+        for (var entry : entries.entrySet()) message.setObject(entry.getKey(), entry.getValue());
+        MessageProducer producer = session.createProducer(session.createQueue(queue));
+        try { producer.send(message); }
+        finally { producer.close(); }
+    }
+
+    /** Sends a serializable business object inside a JMS ObjectMessage; does not convert text to an object. */
+    public void sendObject(String queue, java.io.Serializable payload) throws JMSException {
+        if (payload == null) throw new IllegalArgumentException("Supply a non-null business-object fixture");
+        MessageProducer producer = session.createProducer(session.createQueue(queue));
+        try { producer.send(session.createObjectMessage(payload)); }
+        finally { producer.close(); }
+    }
+
     /**
      * Consumes one queue message within the configured timeout and compares its text exactly.
      * Receiving acknowledges the message; use a dedicated test queue with no competing consumers.
@@ -76,6 +94,12 @@ public final class JmsFlowTestSupport implements AutoCloseable {
             assertTrue("Expected a text message from " + queue, message instanceof TextMessage);
             assertEquals(expected, ((TextMessage) message).getText());
         } finally { consumer.close(); }
+    }
+
+    /** Checks every expected delivery in order, then observes one second for unexpected messages. */
+    public void assertTexts(String queue, java.util.List<String> expected) throws JMSException {
+        for (String text : expected) assertText(queue, text);
+        assertNoMessage(queue);
     }
 
     /** Observes the queue for one second and fails if any message arrives; receipt consumes that message. */

@@ -7,6 +7,227 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 - Prepare the Realistic Solutions community fork with community plugin branding and support links, preserving the original Ikasan attribution and BSD 3-Clause licence.
 - Replace automatic Marketplace publication with a manual candidate-build workflow producing a ZIP, checksums and verification evidence; make CI release drafts opt-in.
+- Default unset module H2 ports to HTTP + 1 / + 2 during creation and runtime import; preserve explicit values, provide per-port Default controls and validate port ranges and duplicate local service ports.
+
+- Distinguish project-owned running harnesses (green) from shared-only SMTP availability (amber), with visible group status and explicit Stop ownership guidance.
+
+- Preserve wrapper/delegate contracts during runtime import instead of treating an outer component as its own delegate; offer unique compatible source implementations for reviewed Spring registration and leave ambiguous matches unresolved. Apply configuration setters to the outer wrapper in all bundled templates and advance the released V5.1.0 adapter to revision 1.0.8.
+
+- Show shared/external SMTP availability in the Harness running indicator without claiming ownership; retain cached endpoint checks and restore idle state when the listener disappears.
+
+- Add Copy all new to source comparison to stage missing destination files together while preserving existing files, dependencies and staged edits.
+
+- Warn before stopping owned test servers whose endpoints are configured in other open projects; allow cancelling aggregate shutdown before any server stops, and guard individual stop actions.
+
+- Offer reviewed recovery of missing, meta-pack-declared builder class settings from literal class arguments in original source; preserve existing values, back up the model and regenerate affected factories transactionally.
+
+- Pulse the Spring registration review button while copied components need registration, with cleanup on staging, reset and dialog closure.
+
+- Recover reviewed JMS trusted-package context helpers during source-assisted runtime import, preserving the reflected class name and original trust settings in user-owned source without copying generated Spring factories.
+
+- Keep the Spring registration review popup compact by bounding wrapped help text and allowing its code preview to scroll instead of forcing full-screen height.
+
+- Offer reviewed, staged Spring registration for copied public component classes during source import. Create explicit user-owned @Import wiring with the selected copies, preserve existing files, allow revert, and reject stale or forged registration plans.
+
+- Reduce the extra left harness gutter by 70 pixels and match status-label hover bounds to the painted text, keeping FTP/SFTP cards clear without an oversized empty column.
+
+- Flag copied Spring providers outside the destination application’s component scan as actionable source-import issues, with explicit user-owned wiring guidance in the review and saved report.
+
+- Finish imported-model generation and JDK alignment before requesting Maven reimport. Refresh even when the POM is unchanged so stale module language/bytecode levels do not leave copied Java 8+ source compiling as Java 7.
+
+- Offer Reload Maven project directly on the Studio waiting screen. Request a full Maven workspace reimport rather than only repeating the readiness check, and distinguish these actions in startup guidance.
+
+- Recover Studio initialization after missed Maven roots events with disposed-aware readiness rechecks. Match imported generated-module roots by filesystem path, support split source/test roots, expose root diagnostics while waiting, and make readiness-check failures recoverable.
+
+- Reserve a separate left canvas column for running FTP/SFTP consumer harness nodes, using effective override addresses and active selections. Keep cards clear of flow transport controls and status hover targets, including reduced layout offsets.
+
+- Add Review Model Repair to Tools and the recovery screen. Preview and validate revision-lock repairs and the retired V5 snapshot transition, render templates before confirmation, preserve an exact original backup, reject stale changes, and reload with save protection retained.
+
+- Report unavailable model meta-packs with the required ID and revision, and distinguish model compatibility errors from malformed JSON while preserving the model and save protection.
+
+- Show active project-owned harness services with a live badge and accessible toolbar tooltips. Keep Start/Stop available during partial startup. Identify module Debug launches by their IntelliJ executor so additional program arguments do not move the restart indicator to Run.
+
+- Retire the unused V5.0.1-SNAPSHOT meta-pack and its optional activation payload. Use released V5.1.0 with JDK 25 as the built-in Ikasan 5 option; retain support for independently installed experimental packs.
+
+- Allocate an independent loopback FTP port per project for harness overrides. Inject the owned endpoint into Run/Debug, display the actual endpoint on the canvas and in server details, and keep data directories and stop/restart lifecycles isolated across projects. Preserve explicitly configured FTP server ports when overrides are disabled.
+
+- Align the retained V5.0.1-SNAPSHOT pack's generated Maven compiler settings and the V5 sample POMs with Java 25 LTS. Update current SDK/verification guidance and regression expectations; preserve dated Java 26 evidence as historical.
+
+- Recognise the concrete library DevNull runtime class as Dev Null Producer during import across V3, V4 and both V5 packs. Preserve builder construction and avoid unnecessary user-class/Spring-bean requirements. Advance the released V5.1.0 pack to revision 1.0.7.
+
+- Clarify that selecting harness overrides requires starting the local services before Run/Debug. Identify the project-owned FTP endpoint in launch failures and give override-aware port-conflict guidance instead of suggesting a component port change that overrides would ignore.
+
+- Locate running modules from arbitrary page URLs using bounded, cancellable parent-path metadata discovery on the same server. Ignore page queries/fragments, reuse and remember the discovered root, and distinguish the first-request preview from the resolved application URL.
+
+- Remove confirmation-only Spring bean/wiring reminders from source-import rows and warning markers. Retain the saved wiring report and actionable source, dependency, support-file and scan decisions.
+
+- Accept Blue Console login and module-view URLs during runtime fetch, preserving the application context and removing page queries/fragments. Preview the exact metadata GET URL before fetching and identify the failing REST stage in HTTP errors.
+
+- Group runtime import review findings by unapplied configuration fields and required implementation classes. List all affected flow/component locations, show shared guidance once per group and omit automatically matched component variants from the popup. Retain the original detailed review, including variant matches, in saved provenance.
+
+- Audit the bundled runtime configuration mappings across V3, V4 and V5. Import Local File Consumer filename lists and SFTP Consumer filter/move controls, and avoid warnings for verified unchanged defaults. Keep unsupported settings and type/class mismatches visible for review. Advance the released V5.1.0 adapter to revision 1.0.6; existing model locks require explicit adoption.
+
+- Recognise concrete FTP and SFTP producer classes during runtime import using explicit pack metadata. Import their configuration fields instead of falling back to Generic Producer; preserve historical saved component identities. The released V5.1.0 adapter advances to revision 1.0.5.
+
+- Explain premature Ikasan shutdown before startup completion, including when no cause is reported and leftover threads keep the JVM alive. Exclude explicit operator stops and ordinary shutdown after startup.
+- Detect Spring Boot module startup failures, including reported HTTP port conflicts, from bounded process output. Show an actionable notification and persistent Studio banner with Run/Debug output access even when leftover JVM threads keep the failed process alive. Reset the diagnostic on a new launch without guessing failure from startup delay or REST 404 responses.
+
+- Simplify property import to an original/action/destination row with Copy all/Revert and an editable Compare Values preview. Remove Review Changes/Clear Review, store imported settings in developer-owned user/src/main/resources/studio-local.properties and wire its optional classpath import without overwriting generated defaults. Preserve cancellation, explicit selection and stale-file checks.
+
+- Apply property edits on the first Update Code click after leaving a required numeric field. Keep uncommitted text intact on focus transfer so formatter rewrites cannot cancel the click or silently revert invalid input.
+
+- Add per-component harness overrides to mix local FTP/SFTP/email and JMS test-reader connections with configured development connections. Keep harness settings in separate generated output, save selections in IntelliJ Application configurations, preserve running-launch selections and show active/next-launch indicators without editing component values. Simplify configuration import to one local file. Generator API 4 and V5.1.0 adapter revision 1.0.4 require explicit adoption for locked projects.
+
+- Hide exactly identical Studio support files by default, with a Show identical files toggle and an empty state. Cache byte equality during background analysis; preserve comment/formatting differences, verification problems and staged edits in the visible list.
+
+- Remove the separate source-import review tab. Show wiring/dependency actions beside their rows and source locations beneath the selected row; keep unmatched scan/wiring problems visible as non-copyable rows. Preserve background updates and the full saved import record, and remove the redundant replacement checkbox: explicit Copy all/Save preview choices authorise only those staged file replacements.
+
+- Place Studio support files immediately after Classes and Dependencies. Allow explicit whole-file copies and staged partial merges with Copy all/Revert and Save preview/Cancel, retain customised support files during regeneration, and preserve identity, replacement approval and stale-review safeguards.
+
+- Verify source checkout module identity against the imported model before preselecting files; recognise Studio generated identity evidence, isolate reactor applications and require an explicit override for mismatched/unverified names. Recheck metadata before applying. Start comparison automatically from directory selection or committed path entry, simplify guidance, remove redundant Analyse/Compare buttons and support staged line-by-line Java merges with immutable originals and existing replacement/stale-review safeguards.
+
+- Run independent H2 as an IntelliJ Java Application using the project JDK and resolved H2 runtime dependency. Track actual processes across editor/menu recreation, open the loopback console after readiness, and support graceful shutdown with an explicit force-stop fallback. Replace generated/sample H2 Maven helper POMs and the pinned server template with a common Java 11-compatible launcher. Advance the generator contract to API 3 and released V5/ExampleIkasan5 packs to 1.0.3; preserve core-managed H2 versions and existing revision-lock adoption.
+
+- Separate Studio-managed debug support files from selectable source imports, verify their destination templates, and provide a read-only comparison/review tab for differing originals. Put original-source evidence before destinations and open original-left diffs with double-click or Enter, preserving import selections and sorted-row mapping. Compare selected dependency declarations even when they require manual resolution. Preselect new implementation/helper sources and ordinary additional dependencies, preserving inherited Maven versions and optional flags; leave existing code, wiring and manual-only declarations unselected.
+
+- Make Studio model import choices explicit above the editor: choose a model.json file OR paste its contents below, without a redundant single Studio tab.
+
+- Replace dynamic meta-pack Java regex validation with RE2/J, bound expression size, and reject unsupported rules with actionable diagnostics. Share semantic Java package-name validation across the editor and AI/readiness paths, migrate bundled FTP rules, and introduce generator API 2 while retaining compatible API 1 packs. Advance released V5.1.0 and ExampleIkasan5 pack revisions to 1.0.2; existing revision locks require explicit adoption.
+
+- Guide module imports through an explicit fetch OR manual JSON choice, enable optional configuration after metadata, and reveal applicable source/properties follow-up steps for both Studio and Ikasan imports. Preserve previews while switching paths and honour the selected properties step after source review.
+
+- Label canvas context-menu actions Blue Console and Launch independent H2. Accept pasted Blue Console home.htm URLs during runtime import, preserving the application context and module-name case while removing landing-page query/fragment data.
+
+- Restore older Studio document-format models containing XML converters saved with the historical builder identifier and no native configuration record. Preserve their JAXB class and XML settings, normalise on the next save, and keep missing-record checks for modern or explicitly configured components.
+
+-
+- Add a source-assisted module import wizard combining runtime metadata, local Java/helper discovery, generated bean-contract review, selectable Maven dependency additions and discovered environment properties. Preserve original source bytes and packages, require explicit selection of original Spring configuration and conflicting replacements, detect stale reviews, and save a local completion checklist without claiming runtime verification.
+
+- Import developer-owned properties for shared settings and named environments, including after runtime model import. Preview key changes and compare values with IntelliJ diffs, protect existing files with explicit replacement and stale-preview checks, and support Git-ignored local configuration. Create standard environment Run/Debug configurations while preserving Studio's debug profile and generated defaults.
+
+- Standardise new Ikasan 5 work on JDK 25 LTS, including released pack metadata, generated project/compiler settings, the developer example and runtime verification tooling. Preserve historical snapshot compatibility metadata and dated evidence.
+
+- Bundle the released Ikasan 5.1.0 meta-pack (`V5.1.0`, pack revision 1.0.1, JDK 25) without snapshot opt-in, with release-tag help links and released BOM dependencies. Keep the previous snapshot pack available for existing projects. Bring the independent Ikasan 5 Maven authoring example onto main as `ExampleIkasan5`, targeting 5.1.0 with archive installation/restart tests and a distinct ID that coexists with the bundled pack. Apply declared REST-to-Studio mappings in its generated test fingerprint helper so saved email configuration does not falsely invalidate test wiring. Retain and document the upstream runtime transaction rollback failures.
+
+- Read the import diagnostic report’s plugin version from build-generated metadata instead of an internal IntelliJ plugin-manager API, preserving the strict compatibility-verifier gate on supported IDEs.
+
+- Add screenshot-friendly import diagnostic reports with numbered summary/detail pages, per-project attempt IDs, reproducible source-build fingerprints, REST stage/status, topology checks, actual meta-pack matching and configuration-type diagnostics. Retain the latest report in memory after import/generation failures; exclude application names, values, URLs, private implementation classes and raw exception messages.
+
+- Add a reproducible VDI meta-pack authoring kit with a complete Ikasan 4.1.6 starter, pinned Studio artifacts, schemas/API sources, Copilot guidance and a curated Maven repository. Verify an isolated bootstrap and offline build, compile the generated factory, validate the pack JAR and include a matching development plugin ZIP. Keep maintained sources in Git and generated distributions under build output.
+
+- Normalize recognised Studio wrapper variations on load: resolve uniquely matching pack-ID casing, move known misplaced project settings into `studio.properties`, and retain top-level import reviews in provenance. Reject conflicting values and preserve unknown-field, runtime-version and revision checks. Save in the standard structure without rewriting the source on load.
+
+- Accept REST configuration parameters with an omitted `value` when reopening saved models. Preserve unset parameter metadata across saves without generating setter values; retain type checks for populated values.
+
+- Keep router branches named `default` distinct from the primary flow route so consumers are positioned once and branched flows retain correct bounds. Wrap long canvas labels and endpoint identifiers to their measured font width.
+
+- Recognise the runtime XML string converter and import its verified XML configuration fields; identify its missing input class for review. Preserve loading and version migration of existing XML components saved with the old builder identifier. Suppress FTP Consumer warnings only for verified unchanged scheduling/recovery and relative-path defaults across V3, V4 and V5 packs.
+
+- Remember running-module fetch connection details and the configuration checkbox per project across IDE restarts; keep passwords limited to retries within the open dialog.
+
+- Keep import/fetch/review dialogs on the invoking Studio window’s monitor, cap their initial bounds to its usable screen area, and prevent large JSON responses from expanding the preview beyond the screen.
+
+- Add explicit REST-to-Studio name mappings only for verified Email/FTP discrepancies; use them consistently for import, native model save/load and export. Validate mappings for collisions and keep historical Studio aliases separate, with their removal scheduled for the next release.
+
+- Correct Email Producer `hasAttachment`, SFTP `knownHostsFilename` and SFTP Producer `cleanUpChunks` property names in all three packs. Load historical names through declared aliases, preserve existing application-property keys, and import the corrected settings from REST configuration.
+
+- Simplify runtime-import implementation guidance by removing the internal “no replacement stub requested” wording.
+
+- Import complete JMS connection-factory and destination JNDI maps from REST configuration for V3, V4 and V5 producers/consumers. Preserve provider-specific string entries and empty maps, and prevent individual-field defaults from overwriting them during generation.
+
+- Explain in runtime-import guidance why implicit defaults can become explicit imported settings, including timezones and generated configuration IDs.
+
+- Omit runtime-import review warnings for settings matching verified defaults declared by the selected meta-pack; cover Scheduled Consumer schedule/recovery defaults in V3, V4 and V5 while retaining warnings for changed or unknown values.
+
+- Preserve declared AUTOMATIC, MANUAL and DISABLED flow startup settings during runtime import; use MANUAL with flow-specific review guidance only for missing settings and reject unknown values.
+
+- Preserve the original application HTTP port from runtime module metadata; flag missing ports for review and reject invalid supplied ports. Clarify which Maven build settings need comparison with the original project.
+
+- Compact the model import dialog, clarify Studio versus runtime JSON modes, and show the optional component configuration tab only for runtime imports.
+
+- Focus runtime-import review on developer actions: omit applied and unset configuration fields, group populated unapplied fields per component, and omit confirmation of already selected variants. Keep routine provenance and credential-handling information in the documentation rather than the review report.
+
+- Keep valid generated Java source when IntelliJ indexes are unavailable during import, preventing optional import shortening from rolling back the code update.
+
+- Infer runtime-import component variants from uniquely linked, pack-declared configuration classes; retain clarification for missing or ambiguous evidence and show inferred choices in the import review.
+- Accept configuration parameters whose null values are omitted by the Ikasan REST serializer, preserving them as unset in import provenance.
+- Retain the running-module import password for retries within the open fetch dialog; clear it on close without persisting it.
+- Normalize Swagger URLs during running-module import, clarify case-sensitive module names, and log safe REST endpoints/statuses. Offer reviewed exact-version or newer same-line patch pack selection while rejecting downgrades and cross-version migrations.
+- Generate JMS MapMessage flow-test fixtures for map consumers and message-kind guards; add sendMap support to the V3, V4 and V5 test helpers.
+- Add JMS Map Message To Payload Converter to the V3, V4 and V5 development palettes, with configurable content/ID/filename fields, runtime configuration import, and direct Ikasan runtime construction.
+- Add Payload To Map Converter to the V3, V4 and V5 development palettes, with direct Ikasan runtime construction, file-transfer input/Map output type guidance and documented charset/attribute precedence.
+
+- Fetch module metadata and flow-scoped component configuration from a running Ikasan module into the existing import preview. Add optional Basic authentication without password persistence, cancellable bounded HTTP requests, actionable REST failures and the existing mapping/review gate before import.
+
+- Fix runtime-import version choices and pack-loading errors waiting until the modal import dialog closes. Publish background results while the dialog is open, preserving disposal guards.
+- Warm the VFS before opening meta-pack install/update file choosers, preserve their modal parent, and ignore selection callbacks after the owning project or manager closes.
+
+- Add persistent **Allow snapshot meta-packs** under Studio settings. Embed Ikasan 5 as optional resource-only data activated after opt-in and IDE restart, filter new-module/import choices by snapshot runtime, and preserve existing snapshot projects after opt-out. Include JDK 26 and demo preparation guidance.
+
+- Retain **Run Plugin (Snapshot Packs)** and the explicit `studioIncludeSnapshotPacks` build flag for pack development. Normal classpaths contain released-runtime packs; the optional V5 payload now activates through the developer setting above. Record interactive V5 module testing separately from runtime certification.
+
+- Fix router route-name validation rejecting valid lists such as `odd,even`. Validate legacy comma-separated patterns against the complete distinct list in the editor and saved-model checks, while preserving per-entry typed collection validation and route order.
+
+- Save affected unsaved flow-test documents before component/flow rename, then rebuild the reference-update plan while preserving developer edits and unrelated unsaved files. Report blocked saves as recoverable guidance.
+
+- Add **Run Flow Test** to the flow canvas context menu, using IntelliJ's normal test configuration and Run tool window for the existing flow-test class.
+
+- Explain unsupported flow-test text comparisons with expected and actual Java types, producer/output context and explicit mapping or object-assertion guidance. Preserve original causes and developer assertion navigation; keep decoding failures distinct.
+
+- Resolve component code-navigation targets from the current Java file after edits or regeneration, preventing double-click navigation from failing on an invalid cached PSI class.
+
+- Add isolated V3/V4 → V5 migration rehearsals with explicit directional rules, model-preservation and rejection checks, and generated V5 runtime fixtures. Keep released IDE/CLI migration choices unchanged while the snapshot and developer-code upgrade paths remain under review.
+
+- Verify V5 generated custom configuration beans through real SMTP delivery, including scalar, list and map environment overrides, generated factory injection, idle readiness and later delivery. Include the scenario in the explicit V5 verification suite.
+
+- Add a V5 compatibility fixture using the real archetype Maven reactor (`user`, `generated`, `user-flow-tests`). Verify inherited build settings, a real flow test across module boundaries, resolved dependencies and archive ownership without installing fixture artifacts.
+
+- Enforce resolved Ikasan platform versions in the V5 verification command using structured Maven dependency trees for every reactor module. Reject missing evidence and mixed versions, preserve actionable audit reports, and document the exact independently versioned Ikasan DBCP fork without changing Maven dependencies.
+
+- Add an HTTP compatibility check for the V5 generated application's Blue Console: login-page rendering, anonymous-access protection, form login, session-cookie module/flow navigation and listener cleanup. Include it in the explicit V5 verification command.
+
+- Extend V5 JMS rollback diagnostics with receive/send and same-session/separate-session controls. Reproduce the XA resource-end warning without an Ikasan flow, while retaining strict rollback and redelivery assertions; document the minimal failing comparison for runtime investigation.
+
+- Add a V5 runtime fixture for the actual generated Email Converter and environment-specific email property overrides. Check delivered bodies, recipient lists and subjects, sender binding on the running producer, idle readiness, later delivery and local-server cleanup.
+
+- Add a single explicit Ikasan 5 development verification command that exports fresh fixtures, runs the compilation/runtime matrix, preserves test reports and dependency evidence, and fails on incomplete or failing runtime checks. Known rollback failures remain visible; no candidate runtime patch is applied automatically.
+
+- Expand Ikasan 5 development runtime coverage to ObjectMessage conversion, routing, filtering, splitting, broker/translator logic, Jakarta XML, scheduled input, local files and transparent debug components. Add standalone JMS XA controls and a separate candidate runtime patch that passes isolated FTP/SFTP rollback probes; the unmodified snapshot rollback gate remains failing.
+
+- Add explicit Ikasan 5 development fixtures for JMS XA and FTP/SFTP producer rollback, retry, idle readiness and later delivery after an injected commit failure. Document the XA connection-factory requirement and the limits of the rollback coverage. The strict runtime gate currently exposes XA resource-end and closed-connection rollback errors in the V5 snapshot; these remain unresolved.
+
+- Add isolated Ikasan 5 runtime fixtures for local JMS, SMTP, FTP and SFTP, with three deliveries per flow, idle-readiness checks, actual receiver assertions and transport cleanup checks. Run them explicitly with Maven and Java 26; the development pack remains unbundled.
+
+- Extend the unbundled Ikasan 5 development pack with a repeatable compilation fixture for all 27 runtime palette components, all five exception actions, generated business stubs and 27 flow tests. Catalogue additions without coverage fail the contract test; placeholder scenarios are not run by default.
+
+- Start an isolated Ikasan 5 snapshot meta-pack with Java 26/BOM metadata, pinned development help, pack contracts and a generated application/flow-test compilation fixture. The initial generated flow compiles and runs on Java 26 after adapting resource injection to Jakarta annotations. It is not included in the released plugin or migration choices.
+
+- Validate Module and Check again save edited project documents before scanning, preventing stale disk contents from keeping resolved findings visible. Failed saves stop validation with an actionable message.
+
+- Restrict local-file test consumers to prefixed test fixtures so the scan directory cannot become an input payload. Directory text-decoding errors identify the path and point to `flowTestProperties`; decoding failures retain the developer assertion location.
+
+- Generate independent expected-output resource files for local-file flow-test scenarios with text expectations, and clarify that input strings name resource files. Preserve inferred business-object expectations.
+
+- Group generated flow-test names at the top of the class: flow, consumer (where applicable), then producer.
+
+- Open the selected flow-test scenario after generation or support refresh, rather than whichever shared support file was written first. For multiple flows, prefer the first newly generated scenario.
+
+- Include the flow-test class in scenario failures. Output-count errors now report producer-specific expected/observed counts and navigate to the actual batch definition, retaining the observation cause. Expected-path failures navigate to `defineExpectedPath`.
+
+- Validate saved flow-test `defineExpectedPath` references for unknown component names and incorrect roles, with source-line navigation and suggestions for spacing/case mistakes. Generated V3/V4 test support also rejects invalid path registrations before starting the flow, including dynamically supplied names.
+
+- Replace the collection editor’s unset checkbox with **Clear and use component default**. **OK** saves the entered collection, including an explicitly empty list or map; **Cancel** preserves the original value.
+
+- Validate Module opens property findings in Studio, reveals the affected property and shows full explanations with safely displayed saved values. Source findings open at the reported line.
+- Validate Module now validates saved model property types, required and conditional values, choices and patterns, including recipient-list entries, and reports the flow, component and property to correct.
+
+- Reject malformed email addresses, including trailing/repeated dots and invalid domain labels, in single recipients and recipient lists. Validate saved values on opening Properties and mark invalid fields with an error indicator and corrective guidance.
+
+- Externalize configured email settings, including single recipients, sender and SMTP connection details, into generated `application.properties` for both Ikasan versions.
+
+- Externalize remaining scalar and string-map settings for JMS, FTP/SFTP, local-file, scheduled, logging and XML-converter components, using component-specific keys for new mappings. Preserve existing keys and custom Java configuration beans.
+
+- Enhance and simplify the auto-generated Flow tests.
 
 - Offer reviewed, meta-pack-driven migrations rules in IDE and offline migration, with recovery and exact-plan source comparison.
 
@@ -50,6 +271,19 @@ release verification and outstanding checks are tracked separately in
 - In-place migrations now remove unmodified, unversioned source-component dependencies retired by the target pack, avoiding unmanaged legacy JAXB dependencies after upgrading to 4.1.6 while preserving explicit overrides.
 
 ### Added
+
+
+
+- Add a Maven meta-pack example and authoring archetype under `ikasan-studio-ancillary`, with separate runtime components, a scheduled sample flow, descriptor/rendering and generated-factory compilation tests, and installer validation of the complete resource-only JAR. The archetype generates and builds the maintained example in its integration test.
+
+
+- Offline tools exports now include the saved project’s required custom meta-pack and an ID/revision/SHA-256 inventory. Exported tools are relocatable and reject missing, changed or unlisted pack JARs. New CLI **validate** and **render** commands support custom-pack models, with rendered previews written to a new directory outside the project. Existing migration paths remain V3.3.9 ↔ V4.1.6.
+
+- Added **Install Meta-Pack…** under Tools → Ikasan Studio for complete custom pack JARs, with metadata, compatibility, resource and template-syntax validation before installation. Installed packs activate after an IDE restart.
+
+- Added **Manage Meta-Packs…** for reviewed external-pack updates, removal, cancellation and restoration of retained revisions. Changes activate after restart, with artifact integrity checks and recovery from interrupted operations. Component overlays and simultaneous revisions of the same pack ID remain unsupported.
+
+- Saved model documents now record the selected meta-pack revision and block loading when it differs from the available revision. Older unlocked models acquire a lock on save. **Adopt Installed Meta-Pack Revision…** provides explicit, validated adoption with a model backup; regenerate, review and test application output afterwards.
 
 - Flow-test scaffolds now share lifecycle/assertion helpers, support explicit filtering/routing scenarios and generate JMS queue input helpers with receiver-side text checks for simple queue-to-queue flows.
 

@@ -62,7 +62,7 @@ The existing `core.TestFixtures` remains shared by older model/UI integration te
 
 ## What passing means
 
-Pack tests currently verify metadata and rendered output. They do not certify compilation or startup against the target Ikasan BOM. Generated-project compilation, startup and independently published pack artifacts remain subsequent work. The split preserves existing assertions and makes that next extraction possible without treating template snapshots as engine correctness.
+Pack tests currently verify metadata and rendered output. They do not certify compilation or startup against the target Ikasan BOM. Generated-project compilation and startup remain separate acceptance checks. Independently versioned pack JARs and local publication are implemented; remote publication is not configured. The split preserves existing assertions and makes that next extraction possible without treating template snapshots as engine correctness.
 
 ## Focused tests and reports
 
@@ -132,7 +132,7 @@ Independent binary/source JARs and Maven publication metadata are now available 
 
 ## Independently versioned pack artifacts
 
-All artifacts remain in this repository and use the same CI job. `./gradlew -p headless test` runs the engine, test-kit, individual pack and combined official-pack suites; root `./gradlew check` also includes all five headless module checks.
+All artifacts remain in this repository and use the same CI job. `./gradlew -p headless test` runs the engine, test-kit, individual pack and combined official-pack suites; root `./gradlew check` also includes the headless module checks.
 
 - `./gradlew -p headless :studio-pack-v3:test` validates and renders V3 in isolation.
 - `./gradlew -p headless :studio-pack-v4:test` validates and renders V4 in isolation.
@@ -144,3 +144,23 @@ Individual pack smoke contracts supplement the combined regression suite; run th
 ActiveMQ ObjectMessage trust generation and provider runtime checks are documented in [JMS Object Messages](JmsObjectMessages.md). Run them with `./gradlew -p headless :studio-bundled-packs:test --tests '*Trusted*'`.
 
 See [Generated Java warning review](GeneratedCodeWarnings.md) for the template Javadoc checks, fixes, and remaining application-specific warning limits.
+
+
+External pack lifecycle coverage lives in `headless/studio-test-kit` (`ExternalMetaPackTest`): isolated restart activation, update/rollback, cancel/remove/restore, immutable revisions, fingerprints and model revision mismatches. `IkasanModelDocumentsTest` covers adding locks to older documents, rejecting mismatched/malformed locks, explicit adoption, original-file backups and stale/forged review rejection. Run the full headless suites after changes; focused selectors are development checks rather than release certification.
+
+## Maven authoring starter
+
+Publish the local headless artifacts with `./gradlew -p headless publishToMavenLocal`, then run:
+
+```sh
+mvn -B -f ikasan-studio-ancillary/example-metapack/pom.xml clean verify
+mvn -B -f ikasan-studio-ancillary/ikasan-studio-metapack-archetype/pom.xml clean verify
+```
+
+The example tests the runtime converters, a configured sample model, descriptor and
+rendering contracts, compilation of the generated component factory against Ikasan
+4.1.6, and installer validation of the final resource-only JAR. The archetype test
+creates a fresh project, runs its Maven verification and checks its generated files.
+The Build workflow runs both commands after local artifact publication. These checks
+do not start an application or certify continued runtime delivery; follow the
+[example README](../ikasan-studio-ancillary/example-metapack/README.md) for that exercise.

@@ -1,5 +1,7 @@
 # Independent pack artifacts and releases
 
+For a teammate starting a separate custom-pack project, begin with the [custom-pack handover](CustomMetaPackHandover.md).
+
 ## One repository, one CI project
 
 The IntelliJ plugin, generator, test kit and official packs remain in this repository. The existing Gradle wrapper and CI pipeline build them together; no additional Travis projects or repositories are required. Publication remains explicit, with no remote repository or credentials configured by this change.
@@ -8,8 +10,15 @@ The IntelliJ plugin, generator, test kit and official packs remain in this repos
 | --- | --- | --- | --- | --- |
 | `studio-pack-v3` | `studio-pack-v3` | `V3.3.9` | `3.3.9` | `0.1.0-SNAPSHOT` |
 | `studio-pack-v4` | `studio-pack-v4` | `V4.1.6` | `4.1.6` | `0.1.0-SNAPSHOT` |
+| `studio-pack-v5-release` | `studio-pack-v5-release` | `V5.1.0` | `5.1.0` | `1.0.8` |
 
-Each pack JAR contains only that pack's descriptors, templates and images. It has no production dependency on the generator, test kit, IntelliJ or another pack. `studio-bundled-packs` is a dependency bundle: its published POM/Gradle metadata selects both exact revisions. The plugin consumes this bundle, and its ZIP includes both pack JARs. Never copy the pack resources back into the bundle or plugin JAR.
+`studio-pack-v5-release:1.0.8` is the normally bundled released adapter for `V5.1.0`.
+The unused `studio-pack-v5` snapshot module and optional activation payload have been removed.
+The standalone Maven [Ikasan 5 authoring example](../ikasan-studio-ancillary/ikasan5-metapack/README.md)
+targets runtime 5.1.0 with the distinct ID `ExampleIkasan5`.
+The released resources and verification instructions are under [headless/studio-pack-v5-release](../headless/studio-pack-v5-release/README.md). Historical snapshot verification reports record their original checkout; they do not describe the current bundled packs.
+
+Each pack JAR contains only that pack's descriptors, templates and images. It has no production dependency on the generator, test kit, IntelliJ or another pack. `studio-bundled-packs` is a dependency bundle: its published POM/Gradle metadata selects all three exact revisions. The plugin consumes this bundle, and its ZIP includes all three released pack JARs. Never copy the pack resources back into the bundle or plugin JAR.
 
 ### Component dependencies
 
@@ -21,6 +30,7 @@ flowchart TB
     P --> B["studio-bundled-packs<br/>Exact revision selection"]
     B --> V3["studio-pack-v3<br/>V3.3.9 resources"]
     B --> V4["studio-pack-v4<br/>V4.1.6 resources"]
+    B --> V5["studio-pack-v5-release<br/>V5.1.0 resources"]
     T["studio-test-kit<br/>Reusable test contracts"] --> G
 ```
 
@@ -33,17 +43,17 @@ The pack's `src/main/resources/studio/metapack/<id>/metapack.json` is the source
 | Field | Meaning |
 | --- | --- |
 | `id` | Existing resource/model identity, preserved for saved-project compatibility |
-| `packVersion` | Independent artifact revision, such as `0.1.0-SNAPSHOT` or `1.0.1` |
+| `packVersion` | Independent artifact revision, such as `0.1.0-SNAPSHOT` or `1.0.3` |
 | `ikasanVersion` | Target runtime release and corresponding Ikasan BOM version |
 | `schemaVersion` | Manifest format; new official manifests use version 2 |
-| `generatorApiVersion` | Required pack-facing generator contract; currently exactly 1 |
+| `generatorApiVersion` | Required pack-facing generator contract; 1–4; semantic validation requires 2+, independent H2 without the legacy template requires 3+, per-component harness factory adapters require 4 |
 | `javaVersion` | Java requirement of the generated application |
 
 Pack revisions use `major.minor.patch` with an optional qualifier. Snapshot pack builds are permitted, but dynamic selectors such as `latest`, `1.+` and version ranges are rejected. Released revisions must be immutable; replace `-SNAPSHOT` before publishing a release. Changing a template or descriptor can advance one pack revision without changing the Ikasan version, other pack revision, generator artifact version or plugin version. Increment the generator API contract only for an incompatible change to the pack-facing model/template contract; it is separate from the generator's Maven artifact version.
 
 The loader accepts legacy schema-1 manifests without inventing revision metadata. Schema 2 requires both new fields, and incompatible generator API requirements fail validation before a pack becomes usable. An old generator that supports only schema 1 cannot consume the new schema-2 packs.
 
-`model.json` continues to store its existing pack ID. This step does not introduce per-project pack revision locks or change the model format. The plugin distribution selects the tested revisions for all its projects. Use only one revision of each pack artifact on a classpath; installing competing revisions or arbitrary external packs is not a supported workflow yet.
+Document-format `model.json` now also records `studio.metaPackRevision` on save. A revision mismatch blocks loading and persistence until the exact revision is restored or the developer explicitly adopts the installed revision. Older unlocked models acquire a lock on their next save. The plugin distribution selects the bundled revisions. Use only one revision of each pack artifact on a classpath. Complete custom packs with unique IDs can also be installed through **Tools → Ikasan Studio → Install Meta-Pack…** and activated after an IDE restart. The install action rejects bundled or installed ID conflicts. Use **Manage Meta-Packs…** for reviewed external updates, removal, cancellation and restoration; changes activate after restart with previous JARs retained. See the [handover](CustomMetaPackHandover.md#install-into-studio).
 
 ## Build, verify and inspect without publishing
 
@@ -73,7 +83,7 @@ JARs are in `headless/<project>/build/libs/`. POMs are in `headless/<project>/bu
 2. Run the complete headless build, including golden-output and packaged-JAR checks. Before calling a pack certified, also compile/run representative generated applications against its exact Ikasan BOM; the current test kit checks validation and rendering.
 3. Inspect the pack and bundle publication metadata. For a release of the bundle, advance the bundle artifact version when its selected pack revisions change. Its initial default is configured in `headless/build.gradle.kts`; it can be overridden in its own build file.
 4. Publish the selected pack using the repository's eventual release credentials and repository configuration. A pack-only publication does not require a plugin release.
-5. To deliver that revision to current plugin users, build/test/release a plugin containing the updated bundle selection. Independent downloads are a later feature.
+5. To deliver that revision to current plugin users, build/test/release a plugin containing the updated bundle selection. Custom complete packs with distinct IDs can be distributed separately and installed through the new install action; it cannot replace bundled IDs.
 
 For local consumer testing only (explicitly writes to the local Maven repository):
 
@@ -87,4 +97,13 @@ No remote publication task is configured. When one is configured, the existing s
 
 ## Deferred extension ecosystem
 
-Public component extensions, template overlays, external installation, dependency/conflict resolution and per-project revision locking remain future work. Start extensions with additive component identities and explicit base-pack compatibility; do not silently replace existing components. These features are not prerequisites for the first plugin release.
+Complete resource-only external pack installation is implemented with validation and activation after restart. Managed external updates/removal/rollback and saved-project revision guards are implemented. Component-extension composition, template overlays, dependency resolution, simultaneous revisions of the same ID and automatic project artifact provisioning remain future work. Start extensions with additive component identities and explicit base-pack compatibility; do not silently replace existing components. These features are not prerequisites for the first plugin release.
+
+
+Property validation now follows the [RE2/J policy](../src/main/resources/studio/metapack/METAPACK.md#property-validation-safety-generator-api-2).
+API 1 packs remain loadable when their expressions are supported. Migrate unsupported
+expressions before installing them; never suppress their validation failures. API 2
+adds semantic Java package-name validation. Released V5.1.0 revision 1.0.2 contains
+this change; saved revision locks require explicit adoption with backup.
+
+Generator API 3 replaces the H2 Maven helper template with the engine-owned [independent H2 launcher](IndependentH2.md). Old API 1/2 packs remain loadable; new official packs require 3.

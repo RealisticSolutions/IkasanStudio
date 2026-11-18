@@ -1,6 +1,6 @@
 <#assign StudioBuildUtils=statics['org.ikasan.studio.core.StudioBuildUtils']>
 <#assign StringCollectionValues=statics['org.ikasan.studio.core.model.StringCollectionValues']>
-<#assign TestJmsHarnessLinks=statics['org.ikasan.studio.core.model.analysis.TestJmsHarnessLinks']>
+<#assign HarnessOverrides=statics['org.ikasan.studio.core.model.analysis.HarnessOverrides']>
 package ${studioPackageTag};
 
 /**
@@ -14,15 +14,13 @@ public class ComponentFactory${flow.getJavaClassName()}
 @org.springframework.beans.factory.annotation.Value("${r"${module.name}"}")
 private String moduleName;
 <#assign hasCollectionProperties=false>
-<#assign hasSftp=false>
 <#list flow.ftlGetAllFlowElementsInAnyRouteNoEndpoints()![] as element>
-<#if (element.componentMeta.endpointKey!"") == "SFTP Endpoint"><#assign hasSftp=true></#if>
 <#list element.getStandardComponentProperties() as key, property>
 <#if StringCollectionValues.supports(property.meta.propertyDataType) && property.meta.propertyConfigFileLabel?has_content && !property.valueNotSet()><#assign hasCollectionProperties=true></#if>
 </#list>
 </#list>
-<#if hasSftp>
-<#include "localSftpHarness_en.ftl">
+<#if harnessSupport?has_content>
+${harnessSupport}
 </#if>
 <#if hasCollectionProperties>
 <#include "stringCollectionProperties_en.ftl">
@@ -99,17 +97,17 @@ org.ikasan.builder.BuilderFactory builderFactory;
         <#include "trustedObjectPackages_en.ftl">
     </#if>
     <#-- Ikasan's logging setRegExpPattern returns null in these versions: do not chain setters. -->
-    <#assign localSftp = (flowElement.componentMeta.endpointKey!"") == "SFTP Endpoint">
+    <#assign harnessKind = HarnessOverrides.kind(module, flowElement)>
+    <#assign localSftp = harnessKind?has_content>
     <#assign nonFluentLog = flowElement.componentMeta.implementingClass == "org.ikasan.component.endpoint.util.producer.LogProducer">
-    <#assign testDestination=TestJmsHarnessLinks.destinationOverride(module, flowElement)!"">
     public ${flowElement.componentMeta.componentType} get${flowElement.getJavaClassName()}() {
     <#if flowElement.componentMeta.usesBuilderInFactory>
         <#if nonFluentLog>
             org.ikasan.builder.component.endpoint.LogProducerBuilder logBuilder = builderFactory.getComponentBuilder().logProducer();
         <#elseif flowElement.componentMeta.ikasanComponentFactoryMethod??>
-            return <#if localSftp>studioLocalSftp(</#if>builderFactory.getComponentBuilder().${flowElement.componentMeta.ikasanComponentFactoryMethod}()
+            return <#if localSftp>org.ikasan.studio.boot.StudioHarnessOverrides.apply(studioHarnessEnvironment, </#if>builderFactory.getComponentBuilder().${flowElement.componentMeta.ikasanComponentFactoryMethod}()
         <#else>
-            return <#if localSftp>studioLocalSftp(</#if>builderFactory.getComponentBuilder().${StudioBuildUtils.toJavaIdentifier(flowElement.componentMeta.name)}()
+            return <#if localSftp>org.ikasan.studio.boot.StudioHarnessOverrides.apply(studioHarnessEnvironment, </#if>builderFactory.getComponentBuilder().${StudioBuildUtils.toJavaIdentifier(flowElement.componentMeta.name)}()
         </#if>
     <#else>
         <#if flowElement.componentMeta.useImplementingClassInFactory>
@@ -124,34 +122,41 @@ org.ikasan.builder.BuilderFactory builderFactory;
         </#if>
     </#if>
 
+    <#if flowElement.componentMeta.implementingClass == "org.ikasan.component.converter.filetransfer.MapMessageToPayloadConverter">
+        <#include "mapMessageToPayload_en.ftl">
+    </#if>
+    <#if flowElement.componentMeta.implementingClass != "org.ikasan.component.converter.filetransfer.MapMessageToPayloadConverter">
     <#list flowElement.getStandardComponentProperties() as propKey, propValue>
-        <#if !propValue.valueNotSet() && propValue.meta.isSetterProperty() >
+        <#-- Complete JNDI maps take precedence over individual setters and their Studio defaults. -->
+        <#assign jndiMapOverrides = (propKey?starts_with("connectionFactoryJndiProperty") && flowElement.getPropertyValue("connectionFactoryJndiProperties")??) || (propKey?starts_with("destinationJndiProperty") && flowElement.getPropertyValue("destinationJndiProperties")??)>
+        <#if !propValue.valueNotSet() && propValue.meta.isSetterProperty() && !jndiMapOverrides >
             <#if nonFluentLog>logBuilder</#if>
             <#if propValue.meta.getSetterMethod()?? && propValue.meta.getSetterMethod()!= "">
                 <#assign setter="${propValue.meta.getSetterMethod()}">
             <#else>
                 <#assign setter="set${StudioBuildUtils.toPascalCase(propValue.meta.propertyName)}">
             </#if>
-            <#if propKey == "destinationJndiName" && testDestination?has_content>
-                .${setter}("${testDestination?j_string}")
+            <#if propKey == "ftps" && harnessKind == "FTP">
+                .${setter}(org.ikasan.studio.boot.StudioHarnessOverrides.isEnabled("${HarnessOverrides.selectionId(module, flow, flowElement)?j_string}") ? false : ${StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.meta.propertyConfigFileLabel)})
             <#elseif StringCollectionValues.supports(propValue.meta.propertyDataType)>
-                <#if flowElement.componentMeta.generatesUserImplementedClass>${flowElement.getJavaVariableName()}</#if>.${setter}(<#if propValue.meta.propertyConfigFileLabel?has_content>studioString<#if propValue.meta.propertyDataType.getCanonicalName() == "java.util.List">List<#else>Map</#if>("${StudioBuildUtils.substitutePlaceholderInLowerCase(module, flow, flowElement, propValue.meta.propertyConfigFileLabel)?j_string}")<#else>${StringCollectionValues.javaLiteral(propValue.meta.propertyDataType, propValue.value)}</#if>)<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
+                <#if flowElement.componentMeta.generatesUserImplementedClass><#if flowElement.componentMeta.useImplementingClassInFactory>component<#else>${flowElement.getJavaVariableName()}</#if></#if>.${setter}(<#if propValue.meta.propertyConfigFileLabel?has_content>studioString<#if propValue.meta.propertyDataType.getCanonicalName() == "java.util.List">List<#else>Map</#if>("${StudioBuildUtils.substitutePlaceholderInLowerCase(module, flow, flowElement, propValue.meta.propertyConfigFileLabel)?j_string}")<#else>${StringCollectionValues.javaLiteral(propValue.meta.propertyDataType, propValue.value)}</#if>)<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
             <#elseif propValue.meta.propertyConfigFileLabel?? &&  propValue.meta.propertyConfigFileLabel!= "">
-                <#if flowElement.componentMeta.generatesUserImplementedClass>${flowElement.getJavaVariableName()}</#if>.${setter}(${StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.meta.propertyConfigFileLabel)})<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
+                <#if flowElement.componentMeta.generatesUserImplementedClass><#if flowElement.componentMeta.useImplementingClassInFactory>component<#else>${flowElement.getJavaVariableName()}</#if></#if>.${setter}(${StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.meta.propertyConfigFileLabel)})<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
             <#else>
                 <#if propValue.meta.isUserSuppliedClass()>
-                    <#if flowElement.componentMeta.generatesUserImplementedClass>${flowElement.getJavaVariableName()}</#if>.${setter}(<#if trustedPackages?has_content && propKey == "connectionFactory">Trusted${flowElement.getJavaClassName()}ContextFactory.configure(</#if>${StudioBuildUtils.toJavaIdentifier(propValue.valueString)}<#if trustedPackages?has_content && propKey == "connectionFactory">)</#if>)<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
+                    <#if flowElement.componentMeta.generatesUserImplementedClass><#if flowElement.componentMeta.useImplementingClassInFactory>component<#else>${flowElement.getJavaVariableName()}</#if></#if>.${setter}(<#if trustedPackages?has_content && propKey == "connectionFactory">Trusted${flowElement.getJavaClassName()}ContextFactory.configure(</#if>${StudioBuildUtils.toJavaIdentifier(propValue.valueString)}<#if trustedPackages?has_content && propKey == "connectionFactory">)</#if>)<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
                 <#else>
                     <#if propValue.meta.usageDataType?? && propValue.meta.usageDataType == "java.lang.String">
-                        <#if flowElement.componentMeta.generatesUserImplementedClass>${flowElement.getJavaVariableName()}</#if>.${setter}("${StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.valueString)?j_string}")<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
+                        <#if flowElement.componentMeta.generatesUserImplementedClass><#if flowElement.componentMeta.useImplementingClassInFactory>component<#else>${flowElement.getJavaVariableName()}</#if></#if>.${setter}("${StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.valueString)?j_string}")<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
                     <#else>
-                        <#if flowElement.componentMeta.generatesUserImplementedClass>${flowElement.getJavaVariableName()}</#if>.${setter}(${StudioBuildUtils.toJavaLiteral(propValue.meta, StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.valueString))})<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
+                        <#if flowElement.componentMeta.generatesUserImplementedClass><#if flowElement.componentMeta.useImplementingClassInFactory>component<#else>${flowElement.getJavaVariableName()}</#if></#if>.${setter}(${StudioBuildUtils.toJavaLiteral(propValue.meta, StudioBuildUtils.substitutePlaceholderInJavaCamelCase(module, flow, flowElement, propValue.valueString))})<#if flowElement.componentMeta.generatesUserImplementedClass>;</#if>
                     </#if>
                 </#if>
             </#if>
             <#if nonFluentLog>;</#if>
         </#if>
     </#list>
+    </#if>
     <#if trustedPackages?has_content && !(flowElement.getPropertyValue("connectionFactory")!"")?has_content>
         .setConnectionFactoryJndiPropertyFactoryInitial(Trusted${flowElement.getJavaClassName()}ContextFactory.initialFactoryName(
         <#if (flowElement.getPropertyValue("connectionFactoryJndiPropertyFactoryInitial")!"")?has_content>
@@ -174,7 +179,7 @@ org.ikasan.builder.BuilderFactory builderFactory;
     <#elseif flowElement.componentMeta.generatesUserImplementedClass>
         return ${flowElement.getJavaVariableName()};
     <#else>
-        <#if nonFluentLog>return logBuilder</#if>.build()<#if localSftp>, "${flow.identity?j_string}", "${flowElement.componentName?j_string}", ${flowElement.componentMeta.isConsumer()?c})</#if>;
+        <#if nonFluentLog>return logBuilder</#if>.build()<#if localSftp>, "${HarnessOverrides.selectionId(module, flow, flowElement)?j_string}", "${harnessKind}", ${flowElement.componentMeta.isConsumer()?c})</#if>;
     </#if>
     }
 </#list>

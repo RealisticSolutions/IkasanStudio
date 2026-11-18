@@ -19,6 +19,7 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <runConfigurationExtension implementation="org.ikasan.studio.intellij.execution.SftpHarnessRunExtension"/>
+        <runConfigurationExtension implementation="org.ikasan.studio.intellij.execution.IndependentH2RunExtension"/>
         <!-- User-submitted exception reports; JetBrains hosts the Marketplace backend. -->
         <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
         <toolWindow factoryClass="org.ikasan.studio.intellij.toolwindow.DesignerToolWindowFactory"
@@ -59,6 +60,12 @@
                     class="org.ikasan.studio.intellij.migration.MigrateIkasanVersionAction"/>
             <action id="IkasanStudio.ExportModelDocuments"
                     class="org.ikasan.studio.intellij.project.ExportIkasanModelAction"/>
+            <action id="IkasanStudio.ImportModuleWizard"
+                    class="org.ikasan.studio.intellij.importer.ImportModuleWizardAction"/>
+            <action id="IkasanStudio.ImportSourceModule"
+                    class="org.ikasan.studio.intellij.importer.ImportSourceModuleAction"/>
+            <action id="IkasanStudio.ImportEnvironmentProperties"
+                    class="org.ikasan.studio.intellij.configuration.ImportEnvironmentPropertiesAction"/>
             <action id="IkasanStudio.RestoreMigration"
                     class="org.ikasan.studio.intellij.migration.RestoreIkasanMigrationAction"/>
             <action id="IkasanStudio.ExportOfflineTools"
@@ -74,6 +81,16 @@
             <action id="IkasanStudio.ReviewLatestAIProposal"
                     class="org.ikasan.studio.intellij.ai.StudioAiReviewLatestProposalAction"/>
             <separator/>
+            <action id="IkasanStudio.ManageMetaPacks"
+                    class="org.ikasan.studio.intellij.metapack.ManageMetaPacksAction"/>
+            <action id="IkasanStudio.RepairModel"
+                    class="org.ikasan.studio.intellij.metapack.RepairModelAction"/>
+            <action id="IkasanStudio.AdoptMetaPackRevision"
+                    class="org.ikasan.studio.intellij.metapack.AdoptMetaPackRevisionAction"/>
+            <action id="IkasanStudio.InstallMetaPack"
+                    class="org.ikasan.studio.intellij.metapack.InstallMetaPackAction"/>
+            <action id="IkasanStudio.ImportReport"
+                    class="org.ikasan.studio.intellij.diagnostics.ShowRuntimeImportReportAction"/>
             <action id="IkasanStudio.CollectDiagnostics"
                     class="org.ikasan.studio.intellij.diagnostics.CollectStudioDiagnosticsAction"/>
             <separator/>

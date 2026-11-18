@@ -1,0 +1,253 @@
+package org.ikasan.studio.integration.ikasan;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.ikasan.studio.core.persistence.json.StudioJson;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.Flow;
+
+/** Read-only acquisition of the documents accepted by the existing runtime importer. */
+public final class RuntimeImportClient {
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(RuntimeImportClient.class.getName());
+    static final int MAX_BYTES = 8 * 1024 * 1024;
+    private static final ObjectMapper JSON = StudioJson.newObjectMapper()
+            .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+            .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
+            .followRedirects(HttpClient.Redirect.NEVER).build();
+
+    private RuntimeImportClient() { }
+
+    /** Payloads may contain application credentials. Never log or persist this acquisition result automatically. */
+    public static final class Documents {
+        private final String moduleJson;
+        private final String configurationJson;
+        private final URI applicationUri;
+        public Documents(String moduleJson, String configurationJson) {
+            this(moduleJson, configurationJson, null);
+        }
+        private Documents(String moduleJson, String configurationJson, URI applicationUri) {
+            this.moduleJson = moduleJson; this.configurationJson = configurationJson;
+            this.applicationUri = applicationUri;
+        }
+        public String moduleJson() { return moduleJson; }
+        public String configurationJson() { return configurationJson; }
+        public URI applicationUri() { return applicationUri; }
+    }
+
+    public static URI baseUri(String value) {
+        URI uri;
+        try { uri = URI.create(value.trim()); }
+        catch (IllegalArgumentException failure) { throw new IllegalArgumentException("Enter a valid module application URL."); }
+        if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                || uri.getHost() == null || uri.getPort() > 65535 || uri.getPort() == 0 || uri.getRawUserInfo() != null) {
+            throw new IllegalArgumentException("Use an HTTP(S) application URL including its context path, without credentials.");
+        }
+        String path = uri.getRawPath().replaceAll("/+$", "");
+        String applicationPath = path.replaceFirst("(?i)/(?:swagger-ui(?:/index\\.html)?|swagger-ui\\.html|home\\.htm|login\\.jsp|modules/view\\.htm)$", "");
+        // UI queries/fragments are not part of the application context and never reach REST requests.
+        return URI.create(uri.getScheme() + "://" + uri.getRawAuthority() + applicationPath);
+    }
+
+    /** Same normalized, encoded endpoint used by fetch; safe for a local connection preview. */
+    public static URI metadataUri(URI application, String module) {
+        return URI.create(baseUri(application.toString()).toASCIIString() + metadataPath(module));
+    }
+
+    private static String metadataPath(String module) {
+        if (module == null || module.isBlank()) throw new IllegalArgumentException("Enter the running module name.");
+        return "/rest/metadata/module/" + segment(module);
+    }
+
+    public static Documents fetch(URI base, String module, String username, char[] password,
+                                  boolean includeConfiguration, Runnable cancelled) throws IOException, InterruptedException {
+        return fetch(base, module, username, password, includeConfiguration, cancelled, LOG::info);
+    }
+
+    /** The IDE supplies its logger at the integration boundary; only sanitized request diagnostics are emitted. */
+    public static Documents fetch(URI base, String module, String username, char[] password,
+                                  boolean includeConfiguration, Runnable cancelled,
+                                  java.util.function.Consumer<String> diagnostics) throws IOException, InterruptedException {
+        return fetch(base, module, username, password, includeConfiguration, cancelled, diagnostics, (stage, status) -> { });
+    }
+
+    public enum RequestStage { METADATA, CONFIGURATION }
+
+    public static Documents fetch(URI base, String module, String username, char[] password,
+                                  boolean includeConfiguration, Runnable cancelled,
+                                  java.util.function.Consumer<String> diagnostics,
+                                  java.util.function.BiConsumer<RequestStage, Integer> responseStatus) throws IOException, InterruptedException {
+        Objects.requireNonNull(diagnostics);
+        Objects.requireNonNull(responseStatus);
+        base = baseUri(base.toString());
+        if (module == null || module.isBlank()) throw new IllegalArgumentException("Enter the running module name.");
+        if (username == null) username = "";
+        if (username.contains(":")) throw new IllegalArgumentException("A Basic authentication username cannot contain a colon.");
+        if (username.isBlank() && password.length != 0) throw new IllegalArgumentException("Enter a username or clear the password for anonymous access.");
+        String authorization = username.isBlank() ? null : "Basic " + Base64.getEncoder().encodeToString(
+                (username + ":" + new String(password)).getBytes(StandardCharsets.UTF_8));
+        var located = locateMetadata(base, module, authorization, cancelled, diagnostics, responseStatus);
+        base = located.application();
+        String metadata = located.json();
+        JsonNode topology = parse(metadata, "Module metadata");
+        if (!topology.isObject() || !topology.path("flows").isArray()
+                || !topology.path("name").isTextual() || !module.equals(topology.path("name").asText())) {
+            throw new IOException("Module metadata must describe the requested module and contain a flows array. Verify the exact case-sensitive registered module name (module.name).");
+        }
+        if (topology.path("flows").size() > 1000) throw new IOException("Import supports at most 1,000 flows.");
+        var names = new LinkedHashSet<String>();
+        for (var flow : topology.path("flows")) {
+            if (!flow.path("name").isTextual() || flow.path("name").asText().isBlank()
+                    || !names.add(flow.path("name").asText())) throw new IOException("Module metadata has invalid or duplicate flow names.");
+        }
+        var records = new LinkedHashMap<String, JsonNode>();
+        int total = 0;
+        if (includeConfiguration) for (String flow : names) {
+            // The unqualified /configuration/components endpoint selects the first module. Always scope it.
+            String text = get(base, "/rest/configuration/" + segment(module) + "/" + segment(flow) + "/components", authorization, cancelled, diagnostics, responseStatus);
+            total += text.getBytes(StandardCharsets.UTF_8).length;
+            if (total > MAX_BYTES) throw new IOException("Combined component configuration exceeds the 8 MiB import limit.");
+            JsonNode array = parse(text, "Component configuration");
+            if (!array.isArray()) throw new IOException("Component configuration must be a JSON array.");
+            for (var record : array) {
+                if (!record.isObject() || !record.path("configurationId").isTextual()
+                        || record.path("configurationId").asText().isBlank()) throw new IOException("A component configuration record has no configurationId.");
+                String id = record.path("configurationId").asText();
+                var previous = records.putIfAbsent(id, record);
+                if (previous != null && !previous.equals(record)) throw new IOException("Conflicting records share a configurationId; fetch again when configuration is stable.");
+            }
+        }
+        cancelled.run();
+        var configuration = JSON.createArrayNode();
+        records.values().forEach(configuration::add);
+        // Keep large configuration exports readable and avoid Swing rendering a single enormous line.
+        // This runs on the acquisition worker, before documents are handed to the EDT.
+        String combined = configuration.isEmpty() ? "[]" : JSON.writerWithDefaultPrettyPrinter().writeValueAsString(configuration);
+        if (combined.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) throw new IOException("Component configuration exceeds the 8 MiB import limit.");
+        return new Documents(metadata, combined, base);
+    }
+
+    private record LocatedMetadata(URI application, String json) { }
+
+    /** Only probe the expected metadata endpoint on the same origin; never follow page links or redirects. */
+    private static LocatedMetadata locateMetadata(URI base, String module, String authorization, Runnable cancelled,
+                                                  java.util.function.Consumer<String> diagnostics,
+                                                  java.util.function.BiConsumer<RequestStage, Integer> responseStatus)
+            throws IOException, InterruptedException {
+        var candidates = new ArrayList<URI>();
+        String path = base.getRawPath();
+        while (true) {
+            if (candidates.size() == 16) throw new IOException("Application URL has too many path segments. Enter a URL closer to the application root.");
+            candidates.add(URI.create(base.getScheme() + "://" + base.getRawAuthority() + path));
+            if (path.isEmpty()) break;
+            path = path.substring(0, path.lastIndexOf('/'));
+        }
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        responseStatus.accept(RequestStage.METADATA, 0);
+        for (int i = 0; i < candidates.size(); i++) {
+            cancelled.run();
+            int[] status = {0};
+            try {
+                String json = get(candidates.get(i), metadataPath(module), authorization, cancelled, diagnostics,
+                        (stage, value) -> status[0] = value, deadline);
+                responseStatus.accept(RequestStage.METADATA, status[0]);
+                return new LocatedMetadata(candidates.get(i), json);
+            } catch (IOException failure) {
+                if (failure instanceof HttpStatusException http && http.status == 404 && i + 1 < candidates.size()) continue;
+                responseStatus.accept(RequestStage.METADATA, status[0]);
+                throw failure;
+            }
+        }
+        throw new IOException("Could not locate the module metadata endpoint.");
+    }
+
+    private static final class HttpStatusException extends IOException {
+        private final int status;
+        private HttpStatusException(int status, String message) { super(message); this.status = status; }
+    }
+
+    private static String segment(String text) { return URLEncoder.encode(text, StandardCharsets.UTF_8).replace("+", "%20"); }
+
+    private static JsonNode parse(String text, String document) throws IOException {
+        try {
+            var node = JSON.readTree(text);
+            if (node == null || node.isNull()) throw new IOException();
+            return node;
+        } catch (IOException failure) {
+            // Server responses may contain secrets. Do not expose parser excerpts or login HTML.
+            throw new IOException(document + " is not valid JSON. Check the application URL and authentication.");
+        }
+    }
+
+    private static String get(URI base, String path, String authorization, Runnable cancelled,
+                              java.util.function.Consumer<String> diagnostics,
+                              java.util.function.BiConsumer<RequestStage, Integer> responseStatus) throws IOException, InterruptedException {
+        return get(base, path, authorization, cancelled, diagnostics, responseStatus,
+                System.nanoTime() + Duration.ofSeconds(20).toNanos());
+    }
+
+    private static String get(URI base, String path, String authorization, Runnable cancelled,
+                              java.util.function.Consumer<String> diagnostics,
+                              java.util.function.BiConsumer<RequestStage, Integer> responseStatus, long deadline) throws IOException, InterruptedException {
+        cancelled.run();
+        URI endpoint = URI.create(base.toASCIIString() + path);
+        responseStatus.accept(path.startsWith("/rest/metadata/") ? RequestStage.METADATA : RequestStage.CONFIGURATION, 0);
+        String stage = path.startsWith("/rest/metadata/") ? "module metadata" : "component configuration";
+        // Endpoint contains no user-info, query or fragment. Never log headers, credentials or response bodies.
+        diagnostics.accept("Runtime import: fetching " + stage + " via GET " + endpoint);
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) throw new IOException("The module REST request timed out.");
+        var request = HttpRequest.newBuilder(endpoint)
+                .timeout(Duration.ofNanos(remaining)).header("Accept", "application/json").GET();
+        if (authorization != null) request.header("Authorization", authorization);
+        var future = HTTP.sendAsync(request.build(), ignored -> new LimitedBody());
+        try {
+            HttpResponse<byte[]> response;
+            while (true) {
+                cancelled.run();
+                if (System.nanoTime() - deadline >= 0) throw new IOException("The module REST request timed out.");
+                try { response = future.get(100, TimeUnit.MILLISECONDS); break; }
+                catch (TimeoutException waiting) { /* Check platform cancellation while the HTTP operation is pending. */ }
+                catch (ExecutionException failure) {
+                    if (failure.getCause() instanceof HttpTimeoutException) throw new IOException("The module REST request timed out.");
+                    diagnostics.accept("Runtime import: failed reading " + stage + " from " + endpoint);
+                    throw new IOException("Could not read the module REST response. Check connectivity, TLS trust and response size.");
+                }
+            }
+            int status = response.statusCode();
+            responseStatus.accept(path.startsWith("/rest/metadata/") ? RequestStage.METADATA : RequestStage.CONFIGURATION, status);
+            diagnostics.accept("Runtime import: " + stage + " GET " + endpoint + " returned HTTP " + status);
+            if (status == 401 || status == 403) throw new IOException("REST access was denied (HTTP " + status + "). Check credentials and ALL or WebServiceAdmin authority.");
+            if (status >= 300 && status < 400) throw new IOException("The module redirected the REST request. Enter its final application URL; redirects are not followed.");
+            if (status != 200) throw new HttpStatusException(status, "The " + stage + " REST request returned HTTP " + status + ". Verify the application context path and the exact case-sensitive registered module name (module.name), which may differ from the lowercase URL context. Also check REST endpoint availability and, for HTTP 500, the module server log.");
+            return new String(response.body(), StandardCharsets.UTF_8);
+        } finally { future.cancel(true); }
+    }
+
+    /** Enforce the input limit while receiving, rather than after buffering an unbounded response. */
+    private static final class LimitedBody implements HttpResponse.BodySubscriber<byte[]> {
+        private final HttpResponse.BodySubscriber<byte[]> delegate = HttpResponse.BodySubscribers.ofByteArray();
+        private Flow.Subscription subscription;
+        private int size;
+        @Override public CompletionStage<byte[]> getBody() { return delegate.getBody(); }
+        @Override public void onSubscribe(Flow.Subscription value) { subscription = value; delegate.onSubscribe(value); }
+        @Override public void onNext(List<ByteBuffer> buffers) {
+            long incoming = buffers.stream().mapToLong(ByteBuffer::remaining).sum();
+            if (incoming > MAX_BYTES - size) {
+                subscription.cancel(); delegate.onError(new IOException("REST response exceeds 8 MiB")); return;
+            }
+            size += (int) incoming; delegate.onNext(buffers);
+        }
+        @Override public void onError(Throwable failure) { delegate.onError(failure); }
+        @Override public void onComplete() { delegate.onComplete(); }
+    }
+}

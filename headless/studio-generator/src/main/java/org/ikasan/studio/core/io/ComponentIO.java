@@ -19,12 +19,9 @@ import org.ikasan.studio.core.persistence.json.IkasanModelDocuments;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.stream.Collectors;
 
 public class ComponentIO {
     private static final ObjectMapper MAPPER = StudioJson.newObjectMapper()
@@ -82,11 +79,19 @@ public class ComponentIO {
     /*
      * Deserialize a module
      * @param path to the file containing the JSON to deserializes
+     * Bundled model resources may live outside the meta-pack namespace; pack metadata uses the confined loader.
      * @return the deserialized Module
-     * @throws StudioBuildException  to wrap JsonProcessingException
+     * @throws StudioBuildException to wrap malformed resource names or JSON
      */
     public static Module deserializeModuleInstance(final String path) throws StudioBuildException {
-        return deserializeModuleInstanceString(getJsonFromFile(path), path);
+        String resource = org.ikasan.studio.core.metapack.loading.ClasspathResourcePaths.canonicalRelative(path, false);
+        if (resource == null) throw new StudioBuildException("Model resource must be a canonical relative classpath name");
+        try (InputStream input = ComponentIO.class.getClassLoader().getResourceAsStream(resource)) {
+            if (input == null) throw new StudioBuildException("Model resource could not be loaded: " + path);
+            return deserializeModuleInstanceString(new String(input.readAllBytes(), StandardCharsets.UTF_8), path);
+        } catch (java.io.IOException failure) {
+            throw new StudioBuildException("Could not read model resource " + path, failure);
+        }
     }
     // This interface is easier to test generically
     public static Module deserializeModuleInstanceString(final String jsonString, final String source) throws StudioBuildException {
@@ -108,13 +113,14 @@ public class ComponentIO {
     }
 
     private static String getJsonFromFile(final String path) throws StudioBuildException {
-        final InputStream inputStream = ComponentIO.class.getClassLoader().getResourceAsStream(path);
-        if (inputStream == null) {
-            throw new StudioBuildException("The serialised data in [" + path + "] could not be loaded, check the path is correct");
+        try (InputStream inputStream = org.ikasan.studio.core.metapack.loading.MetaPackResources.open(path)) {
+            if (inputStream == null) {
+                throw new StudioBuildException("The serialised data in [" + path + "] could not be loaded, check the path is correct");
+            }
+            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new StudioBuildException("Could not read metadata resource " + path, e);
         }
-        return new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))
-                .lines()
-                .collect(Collectors.joining());
     }
 
     /**
@@ -208,11 +214,17 @@ public class ComponentIO {
         // UTF-8 files decoded to String (and pasted text) can retain a leading byte-order mark.
         // Strip only that prefix; U+FEFF inside a JSON string is legitimate model content.
         if (json != null && json.startsWith("\uFEFF")) json = json.substring(1);
+        final JsonNode parsed;
+        try {
+            parsed = MAPPER.readTree(json);
+        } catch (JsonProcessingException e) {
+            throw new StudioBuildException("The serialised data in [" + source + "] is not valid JSON: " + e.getMessage(), e);
+        }
         final JsonNode root;
         try {
-            root = IkasanModelDocuments.toLegacy(MAPPER.readTree(json));
+            root = IkasanModelDocuments.toLegacy(parsed);
         } catch (java.io.IOException e) {
-            throw new StudioBuildException("The serialised data in [" + source + "] is not valid JSON: " + e.getMessage(), e);
+            throw new StudioBuildException("The serialised data in [" + source + "] cannot be loaded safely: " + e.getMessage(), e);
         }
         if (root == null || !root.isObject()) {
             throw new StudioBuildException("The serialised data in [" + source + "] must be a JSON object");

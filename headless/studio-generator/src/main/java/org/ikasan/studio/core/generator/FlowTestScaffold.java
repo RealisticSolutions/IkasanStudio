@@ -16,6 +16,14 @@ public final class FlowTestScaffold {
     public static final String TEST_PROPERTIES_PATH = "user-flow-tests/src/test/resources/module-test.properties";
     public static final String SUPPORT_PATH = "user-flow-tests/src/test/java/org/ikasan/studio/flowtests/support/ModuleFlowTestSupport.java";
     private FlowTestScaffold() { }
+    /** Default developer-owned test location, shared by generation and navigation. */
+    public static String testPath(Flow flow) {
+        String className = flow.getJavaClassName() + "FlowTest";
+        if (!className.matches("[A-Za-z_$][A-Za-z0-9_$]*"))
+            throw new IllegalArgumentException("Invalid flow Java class name.");
+        return "user-flow-tests/src/test/java/org/ikasan/studio/flowtests/" + className + ".java";
+    }
+
     public record Scaffold(String rootPom, String testPath, Map<String, String> files) { }
 
     /** Pack-declared external settings and provider choices affect shared test wiring. */
@@ -36,7 +44,12 @@ public final class FlowTestScaffold {
 
     /** Legacy fingerprints or package layouts need one explicit module-support refresh. */
     public static boolean supportNeedsRefresh(String existingSupport, Module module) {
-        return !existingSupport.contains("new FileDeliveryBatchAssertions()")
+        return !existingSupport.contains("FlowTestFailureDiagnostics.contextualise(")
+                || !existingSupport.contains("protected void assertExpectedOutput(")
+                || !existingSupport.contains("protected final <I> void runBatches(")
+                || !existingSupport.contains("FlowTestFailureCapture")
+                || !existingSupport.contains("protected final void runTest(TestScenario scenario)")
+                || !existingSupport.contains("new FileDeliveryBatchAssertions()")
                 || !existingSupport.contains("protected String formatOutputText(Object payload)")
                 || !existingSupport.contains("WIRING_SCHEMA_VERSION = " + ModuleTestWiring.SCHEMA_VERSION + ";")
                 || !existingSupport.contains("SUPPORT_META_PACK = \"" + module.getMetaVersion() + "\"");
@@ -69,18 +82,45 @@ public final class FlowTestScaffold {
         values.put("isolatedFiles", isolatedFiles);
         values.put("filenameKey", isolatedFiles ? org.ikasan.studio.core.StudioBuildUtils.substitutePlaceholderInLowerCase(
                 module, flow, flow.getConsumer(), filenameProperty.getMeta().getPropertyConfigFileLabel()) : "");
-        Map<String, String> methods = Map.of("Converter", "converter", "Translator", "translator", "Broker", "broker", "Producer", "producer");
+        Map<String, String> methods = Map.of("Converter", "converter", "Translator", "translator", "Broker", "broker", "Producer", "producer", "Splitter", "splitter");
         java.util.List<Map<String, String>> executionPath = new java.util.ArrayList<>();
         boolean automaticPath = flow.getFlowRoute().getChildRoutes().isEmpty() && flow.getExceptionResolver() == null;
         for (var element : flow.getFlowRoute().getFlowElements()) {
+            if (element.getComponentMeta().isDebug()) continue;
             String type = element.getComponentMeta().getComponentType();
             String method = type == null ? null : methods.get(type.substring(type.lastIndexOf('.') + 1));
-            if ("org.ikasan.spec.component.filter.Filter".equals(type)
-                    && element.getComponentMeta().isFlowTestPassThroughFilter()) method = "filter";
+            if ("org.ikasan.spec.component.filter.Filter".equals(type)) method = "filter";
             if (method == null) automaticPath = false;
-            else executionPath.add(Map.of("method", method, "name", element.getIdentity()));
+            else executionPath.add(Map.of("method", method, "name", element.getIdentity(),
+                    "filterDecision", Boolean.toString("filter".equals(method)
+                            && !element.getComponentMeta().isFlowTestPassThroughFilter())));
         }
         automaticPath &= !executionPath.isEmpty() && "producer".equals(executionPath.get(executionPath.size() - 1).get("method"));
+        boolean splitterPath = automaticPath && executionPath.stream().anyMatch(step -> "splitter".equals(step.get("method")));
+        boolean filterPath = automaticPath && executionPath.stream().anyMatch(step -> "true".equals(step.get("filterDecision")));
+        values.put("filterPath", filterPath);
+        values.put("splitterPath", splitterPath);
+        var routePath = flow.getExceptionResolver() == null && !flow.getFlowRoute().getChildRoutes().isEmpty()
+                ? FlowTestRoutePath.describe(flow.getFlowRoute(), new int[]{0}) : null;
+        values.put("routerPath", routePath == null ? Map.of() : routePath);
+
+        java.util.List<Map<String, Object>> splitSteps = new java.util.ArrayList<>();
+        java.util.List<String> splitClosings = new java.util.ArrayList<>();
+        int splitDepth = 0;
+        for (var step : executionPath) {
+            String indent = "    ".repeat(3 + splitDepth);
+            boolean splitter = "splitter".equals(step.get("method"));
+            boolean filterDecision = "true".equals(step.get("filterDecision"));
+            splitSteps.add(Map.of("method", step.get("method"), "name", step.get("name"),
+                    "indent", indent, "splitter", splitter, "filterDecision", filterDecision, "index", splitDepth + 1));
+            if (splitter || filterDecision) {
+                splitClosings.add(0, indent);
+                splitDepth++;
+            }
+        }
+        values.put("splitSteps", splitSteps);
+        values.put("splitClosings", splitClosings);
+        automaticPath &= !splitterPath && !filterPath;
         var inputMeta = flow.getConsumer().getComponentMeta();
         boolean observationOnly = automaticPath && flow.getFlowRoute().getFlowElements().size() == 1
                 && "self-generating".equals(inputMeta.getFlowTestInputMode())
@@ -90,6 +130,8 @@ public final class FlowTestScaffold {
         values.put("scheduledContext", "scheduled-context".equals(inputMeta.getFlowTestInputMode())
                 && inputMeta.getFlowTestInputModeInvalidatedByProperties().stream().allMatch(name ->
                     flow.getConsumer().getProperty(name) == null || flow.getConsumer().getProperty(name).valueNotSet()));
+        values.put("triggerOnly", Boolean.TRUE.equals(values.get("scheduledContext"))
+                && executionPath.stream().anyMatch(step -> "broker".equals(step.get("method"))));
         String implementation = flow.getConsumer().getPropertyValueAsString("userImplementedClassName");
         values.put("sampleSubmission", "sample-submission".equals(inputMeta.getFlowTestInputMode())
                 && implementation != null && !implementation.isBlank());
@@ -106,10 +148,8 @@ public final class FlowTestScaffold {
                 && destination != null && !destination.valueNotSet()
                 && destination.getMeta().getPropertyConfigFileLabel() != null;
         var jmsOutputs = flow.getFlowElementsNoExternalEndPoints().stream().filter(e -> e.getComponentMeta().isProducer()).toList();
-        values.put("fileDelivery", jmsOutputs.size() == 1 && jmsOutputs.get(0).getComponentMeta().isFlowTestFileDelivery());
-        values.put("smtpDelivery", jmsOutputs.size() == 1 && jmsOutputs.get(0).getComponentMeta().supportsTestMailServer());
-        values.put("sftpFileDelivery", jmsOutputs.size() == 1 && jmsOutputs.get(0).getComponentMeta().supportsTestSftpServer());
-        values.put("ftpFileDelivery", jmsOutputs.size() == 1 && jmsOutputs.get(0).getComponentMeta().supportsTestFtpServer());
+        var delivery = FlowTestDelivery.forProducers(jmsOutputs);
+        delivery.contributeTo(values);
         String jmsOutputKey = "";
         if (jmsOutputs.size() == 1) {
             var output = jmsOutputs.get(0);
@@ -124,6 +164,56 @@ public final class FlowTestScaffold {
         }
         values.put("jmsOutputKey", jmsOutputKey);
         values.put("jmsConsumer", jmsConsumer);
+        boolean objectMessageInput = false;
+        boolean mapMessageInput = false;
+        String objectInputType = "java.io.Serializable";
+        // Only infer along the initial linear route; do not look through arbitrary transformations/branches.
+        if (jmsConsumer) {
+            for (var element : flow.getFlowRoute().getFlowElements()) {
+                if (element.getComponentMeta().isFlowTestPassThroughFilter()) continue;
+                if (!objectMessageInput) {
+                    String input = element.getEffectiveInputTypeDescription();
+                    String output = element.getEffectiveOutputTypeDescription();
+                    mapMessageInput = input != null && input.matches("(javax|jakarta)\\.jms\\.MapMessage")
+                            || input != null && input.matches("(javax|jakarta)\\.jms\\.Message")
+                            && output != null && output.matches("(javax|jakarta)\\.jms\\.MapMessage");
+                    if (mapMessageInput) break;
+                    objectMessageInput = "org.ikasan.component.converter.jms.ObjectMessageToObjectConverter"
+                            .equals(element.getComponentMeta().getImplementingClass());
+                    if (!objectMessageInput) break;
+                } else {
+                    String declared = element.getEffectiveInputTypeDescription();
+                    if (declared != null && declared.matches("[a-zA-Z_$][\\w$]*(\\.[a-zA-Z_$][\\w$]*)+"))
+                        objectInputType = declared;
+                    break;
+                }
+            }
+        }
+        values.put("objectMessageInput", objectMessageInput);
+        values.put("mapMessageInput", mapMessageInput);
+        values.put("objectInputType", objectInputType);
+        // Infer the observed payload from the last upstream component on an unambiguous linear path.
+        // Producers are terminal in metadata, but afterFlowElement still observes their input payload.
+        String objectOutputType = "";
+        if (automaticPath) {
+            String payloadType = flow.getConsumer().getEffectiveOutputTypeDescription();
+            for (var element : flow.getFlowRoute().getFlowElements()) {
+                if (element.getComponentMeta().isProducer()) break;
+                if (element.getComponentMeta().isFlowTestPassThroughFilter()) continue;
+                payloadType = element.getEffectiveOutputTypeDescription();
+            }
+            if (payloadType != null && payloadType.matches("[a-zA-Z_$][\\w$]*(\\.[a-zA-Z_$][\\w$]*)+")
+                    && !payloadType.startsWith("java.") && !payloadType.startsWith("javax.")
+                    && !payloadType.startsWith("jakarta.") && !payloadType.startsWith("org.ikasan.")
+                    && !payloadType.startsWith("org.quartz.")) objectOutputType = payloadType;
+        }
+        values.put("objectOutputType", objectOutputType);
+        // File-input scenarios use independent text fixtures unless an actual business object was inferred.
+        boolean resourceExpectedOutputs = delivery.usesResources()
+                || (isolatedFiles && !jmsOutputs.isEmpty() && !(jmsOutputs.size() == 1 && !objectOutputType.isEmpty()));
+        values.put("resourceExpectedOutputs", resourceExpectedOutputs);
+
+
         values.put("jmsInputKey", jmsConsumer ? org.ikasan.studio.core.StudioBuildUtils.substitutePlaceholderInLowerCase(
                 module, flow, flow.getConsumer(), destination.getMeta().getPropertyConfigFileLabel()) : "");
         var patternProperty = flow.getConsumer().getProperty("filenamePattern");
@@ -148,14 +238,13 @@ public final class FlowTestScaffold {
         values.put("applicationGroupId", application.getGroupId() == null ? parent.getGroupId() : application.getGroupId());
         values.put("applicationArtifactId", application.getArtifactId());
         values.put("applicationVersion", application.getVersion() == null ? parent.getVersion() : application.getVersion());
-        String path = "user-flow-tests/src/test/java/org/ikasan/studio/flowtests/" + className + ".java";
+        String path = testPath(flow);
         Map<String, String> files = new LinkedHashMap<>();
         files.put(ModuleTestWiring.PATH, ModuleTestWiring.create(module));
         if (!observationOnly) {
             if (ftpInput || sftpInput || isolatedFiles) addSampleResources(files, flow.getIdentity(), flow.getConsumer().getIdentity());
-            if (jmsOutputs.size() == 1 && (jmsOutputs.get(0).getComponentMeta().isFlowTestFileDelivery()
-                    || jmsOutputs.get(0).getComponentMeta().supportsTestMailServer())) {
-                addSampleResources(files, flow.getIdentity(), jmsOutputs.get(0).getIdentity());
+            if (resourceExpectedOutputs) {
+                for (var output : jmsOutputs) addSampleResources(files, flow.getIdentity(), output.getIdentity());
             }
         }
         if (jmsConsumer) files.put("user-flow-tests/src/test/java/org/ikasan/studio/flowtests/support/ModuleJmsTestConfig.java",
@@ -183,6 +272,12 @@ public final class FlowTestScaffold {
                 FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "outputTextSupportTemplate_en.ftl", values));
         files.put("user-flow-tests/src/test/java/org/ikasan/studio/flowtests/support/utils/LocalSmtpTestServer.java",
                 FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "localSmtpTestServerTemplate_en.ftl", values));
+        files.put("user-flow-tests/src/test/java/org/ikasan/studio/flowtests/support/utils/FlowTestFailureCapture.java",
+                FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "flowTestFailureCaptureTemplate_en.ftl", values));
+        files.put("user-flow-tests/src/test/java/org/ikasan/studio/flowtests/support/utils/FlowTestFailureDiagnostics.java",
+                FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "flowTestFailureDiagnosticsTemplate_en.ftl", values));
+        files.put("user-flow-tests/src/test/java/org/ikasan/studio/flowtests/support/utils/FlowTestBatch.java",
+                FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "flowTestBatchTemplate_en.ftl", values));
         files.put(SUPPORT_PATH, FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "moduleFlowTestSupportTemplate_en.ftl", values));
         files.put(path, FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), observationOnly ? "flowObservationTestTemplate_en.ftl" : "flowTestTemplate_en.ftl", values));
         files.put("user-flow-tests/pom.xml", FreemarkerUtils.generateFromTemplate(module.getMetaVersion(), "flowTestPomTemplate_en.ftl", values));
@@ -196,14 +291,25 @@ public final class FlowTestScaffold {
                 Model edits do not require utility regeneration; Studio fixes or Ikasan upgrades may require reviewed updates.
                 Existing helpers in the old package are retained. Port custom setup before adopting the new support package.
                 Scenario tests use IkasanFlowTestRule; continuous-source observation tests use a bounded counting listener.
-                They deliberately FAIL before starting services until you complete the test scenario.
-                Direct self-generating-source/discard-sink observation tests have only TODO 1–2: review settings, then enable.
+                Standard scenarios surface component failures with the flow/component, incoming payload type and original cause.
+                This is a success-scenario check; deliberately expected failure/recovery paths need custom observation.
+                JMS MapMessage input is inferred from the first component's declared input, or an initial
+                Message-to-MapMessage guard. These tests use sendMap with Map fixtures; review the map keys
+                against the converter configuration. sendObject(map) creates the wrong JMS message kind.
+                Existing JMS helpers need a reviewed update if they lack sendMap; they are never overwritten automatically.
+                JMS input normally starts with text. An initial ObjectMessageToObjectConverter selects sendObject and
+                object payloads in createInputOutputBatches: populate its TODO with serializable business objects.
+                A downstream declared input class is a fixture hint, not automatically constructed business data.
+                Existing utils/JmsFlowTestSupport.java is preserved. If it lacks sendObject, archive it outside the .java
+                extension and generate again to recreate the missing helper; review/reapply customisations.
+                New tests run immediately, starting the configured application and fixtures; no review flag is required.
+                Direct self-generating-source/discard-sink observation tests have only TODO 1–2: review settings and observation expectations.
                 They check any meta-pack initial payload sequence, count later events, and stop the test flow only during teardown.
-                Other scenarios follow TODO 1–5 in the Java test: isolate settings, supply two input batches, select output and expected results,
-                review component-path expectations, then enable and run. Set TEST_REVIEWED only after completing the first four tasks.
+                Other scenarios follow TODO 1–4 in the Java test: define input collections per batch, select producer outputs and expected results,
+                review component-path expectations, and review shared test connections. Tests run immediately; use failures to guide completion of the TODOs.
                 Configure shared test connections in src/test/resources/module-test.properties (UTF-8).
                 Studio flow/component renames update recognised test names, property references and fixture directories.
-                Business assertions, expected values, TEST_REVIEWED and custom test class names are preserved.
+                Business assertions, expected values and custom test class names are preserved.
                 Flow renames also rename test classes/files still using the generated name, updating Java references
                 and supported run configurations. Conflicting names block the rename.
                 Review any custom references reported by Studio, then rebuild and rerun existing tests.
@@ -236,7 +342,14 @@ public final class FlowTestScaffold {
                 Override prepareFixtures(context) to initialise instance fixtures after Spring starts, before the flow starts.
                 cleanupFixtures(context) runs before Spring closes, even after partial setup or test failure.
                 Cleanup failures are suppressed onto the original failure; tolerate partially initialised fixtures.
-                Standard tests use runTest with named supplyInput and optional verifyReceivedOutput overrides.
+                Standard tests use runBatches with createInputOutputBatches, supplyInput and an optional receiver callback.
+                The number of definitions is the batch count; each input list is submitted in the same running flow.
+                Expected output values are grouped by producer and ordered within each producer, not across branches.
+                Business objects must implement equals and matching hashCode. String expectations use formatOutputText.
+                An empty output list means no delivery during the observation window; omitted producers are ignored.
+                Outputs need not match input counts. Customise path expectations for routing, filtering and splitting.
+                Increase test.scenario.timeout-seconds for large/slow collections; the default total limit is 60 + 10 * delivery timeout.
+                Legacy runTest calls continue to run two batches.
                 verifyFlow supplies the common lifecycle and two-delivery checks; verifyScenario supports
                 deliberate rejection/branch scenarios with explicit expectations and output/absence assertions.
                 For JMS queue scaffolds configure test.jms.broker-url and the flow's matching isolated broker/destinations
@@ -254,7 +367,7 @@ public final class FlowTestScaffold {
                 Run from the project root: `mvn -pl user-flow-tests -am test`.
                 For one test: `mvn -pl user-flow-tests -am -Dtest=YourFlowTest -Dsurefire.failIfNoSpecifiedTests=false test`.
                 Override assertOutput(Object actual, int batch) for business-object field assertions and call
-                runTest(TEST_REVIEWED, PRODUCER_NAME); this bypasses formatOutputText conversion.
+                runTest(PRODUCER_NAME); this bypasses formatOutputText conversion.
                 With text assertions, false uses toString(), not object equality.
                 DECODE_OUTPUT_CONTENT_AS_TEXT enables content comparison for Ikasan Payload, bytes, files/paths/file lists and JMS TextMessage.
                 It uses UTF-8, rejects unsupported types and never acknowledges/consumes JMS messages; override formatOutputText for other formats.

@@ -26,18 +26,149 @@ public final class IkasanRuntimeImport {
     private IkasanRuntimeImport() { }
 
     /** Result is a validated Studio document plus review messages, without configuration values. */
-    public record Result(String studioJson, List<String> review) {
-        public Result { review = List.copyOf(review); }
+    public record Result(String studioJson, List<String> review, List<ReviewItem> reviewItems) {
+        public Result(String studioJson, List<String> review) { this(studioJson, review, List.of()); }
+        public Result { review = List.copyOf(review); reviewItems = List.copyOf(reviewItems); }
     }
+
+    public enum ReviewKind { IMPLEMENTATION, CONFIGURATION, INFERRED_VARIANT }
+    /** Structured presentation data; the original review remains intact in the saved provenance. */
+    public record ReviewItem(ReviewKind kind, ComponentRef component, String subject, String evidence, String message) { }
 
     /** A runtime implementation can correspond to several design-time variants (for example scheduled/file consumers). */
     public record ComponentRef(String flow, String component) { }
     public record MappingChoice(ComponentRef component, List<String> variants) { }
 
-    /** Returns variants requiring an explicit choice; configuration classes alone cannot identify message providers. */
+    public record PackRecommendation(String pack, String sourceVersion, String targetVersion) {
+        public boolean exact() { return sourceVersion.equals(targetVersion); }
+    }
+
+    /** Value-free inspection using the importer's actual matching rules; no input survives this call. */
+    public static void diagnose(String moduleJson, String configurationJson, String pack,
+                                org.ikasan.studio.core.diagnostics.RuntimeImportReport report) {
+        report.pack(pack);
+        report.inspect(moduleJson, configurationJson);
+        report.stage(org.ikasan.studio.core.diagnostics.RuntimeImportReport.Stage.MATCHING);
+        try {
+            report.revision(ComponentLibrary.getMetaPackManifest(pack).packVersion());
+            JsonNode root = read(moduleJson);
+            if (!root.path("flows").isArray() || root.path("flows").size() > 1000) return;
+            Map<String, JsonNode> configs = configurationJson.isBlank() ? Map.of() : configurations(read(configurationJson));
+            int f = 0;
+            for (var flow : root.path("flows")) {
+                f++;
+                var nodes = new LinkedHashMap<String, JsonNode>();
+                if (flow.path("consumer").isObject()) nodes.put(flow.path("consumer").path("componentName").asText(), flow.path("consumer"));
+                for (var node : flow.path("flowElements")) {
+                    if (nodes.size() > 500) break;
+                    nodes.putIfAbsent(node.path("componentName").asText(), node);
+                }
+                int c = 0;
+                for (var raw : nodes.values()) {
+                    String location = "F" + f + "/C" + ++c;
+                    var candidates = exactCandidates(raw, pack);
+                    ComponentMeta meta;
+                    try { meta = resolve(raw, pack, null, configs); }
+                    catch (StudioBuildException ambiguous) {
+                        report.issue(location, candidates.size() > 1 ? "VARIANT_CLARIFICATION_REQUIRED" : "COMPONENT_MAPPING_UNAVAILABLE");
+                        continue;
+                    }
+                    if (candidates.isEmpty()) report.issue(location, "CUSTOM_IMPLEMENTATION_AND_WIRING_REQUIRED");
+                    else {
+                        report.matched();
+                        report.publicContext(location, meta.getImplementingClass(), null);
+                    }
+                    String id = raw.path("configurationId").asText("");
+                    var config = configs.get(id);
+                    if (config == null) {
+                        if (!id.isBlank()) report.issue(location, "CONFIGURATION_NOT_SUPPLIED");
+                        continue;
+                    }
+                    boolean matchingClass = config.path("implementingClass").asText().equals(configurationClass(meta));
+                    if (!matchingClass) report.issue(location, "CONFIGURATION_CLASS_MISMATCH");
+                    int p = 0;
+                    for (var parameter : config.path("parameters")) {
+                        p++;
+                        var value = parameter.get("value");
+                        if (value == null || value.isNull()) continue;
+                        String name = parameter.path("name").asText();
+                        String mapped = meta.runtimeConfigurationProperty(name);
+                        var property = mapped == null ? null : meta.getAllowableProperties().get(mapped);
+                        if (matchingClass && property != null && compatible(value, property.getPropertyDataType())) continue;
+                        if (matchingClass && value.equals(meta.getRuntimeConfigurationDefaults().get(name))) continue;
+                        String field = location + "/P" + p;
+                        if (property != null && !candidates.isEmpty()) report.publicContext(field, meta.getImplementingClass(), mapped);
+                        if (!matchingClass) continue; // The class issue already explains why its fields were not applied.
+                        if (property == null) report.issue(field, "CONFIGURATION_PROPERTY_UNMAPPED");
+                        else report.issue(field, "CONFIGURATION_TYPE_" + actualType(value, property.getPropertyDataType())
+                                + "_EXPECTED_" + expectedType(property.getPropertyDataType()));
+                    }
+                }
+            }
+        } catch (Exception failure) { report.failure(failure); }
+    }
+
+    private static String actualType(JsonNode value, Class<?> expected) {
+        if (expected == List.class && value.isArray()) return "NON_STRING_LIST_ENTRIES";
+        if (expected == Map.class && value.isObject()) return "NON_STRING_MAP_VALUES";
+        if ((expected == Integer.class || expected == int.class || expected == Long.class || expected == long.class) && value.isNumber()) {
+            if (!value.isIntegralNumber()) return "FRACTIONAL_NUMBER";
+            if ((expected == Integer.class || expected == int.class) && !value.canConvertToInt()
+                    || (expected == Long.class || expected == long.class) && !value.canConvertToLong()) return "INTEGER_OUT_OF_RANGE";
+        }
+        return value.getNodeType().name();
+    }
+
+    private static String expectedType(Class<?> type) {
+        if (type == String.class) return "STRING";
+        if (type == Boolean.class || type == boolean.class) return "BOOLEAN";
+        if (type == Integer.class || type == int.class || type == Long.class || type == long.class) return "INTEGER";
+        if (type == List.class) return "STRING_LIST";
+        if (type == Map.class) return "STRING_MAP";
+        return "OTHER";
+    }
+
+    /** Exact version first, otherwise the nearest newer stable patch in the same major/minor line. */
+    public static Optional<PackRecommendation> recommendPack(String moduleJson, List<String> packs)
+            throws StudioBuildException {
+        try {
+            String source = read(moduleJson).path("ikasanVersion").asText("");
+            if (source.isBlank()) return Optional.empty();
+            PackRecommendation nearest = null;
+            for (String pack : packs) {
+                String target = ComponentLibrary.getMetaPackManifest(pack).ikasanVersion();
+                var candidate = new PackRecommendation(pack, source, target);
+                if (candidate.exact()) return Optional.of(candidate);
+                if (forwardPatch(source, target) && (nearest == null
+                        || patch(target).compareTo(patch(nearest.targetVersion())) < 0)) nearest = candidate;
+            }
+            return Optional.ofNullable(nearest);
+        } catch (StudioBuildException failure) { throw failure; }
+        catch (Exception failure) { throw new StudioBuildException("Cannot inspect the export's Ikasan version.", failure); }
+    }
+
+    private static boolean forwardPatch(String source, String target) {
+        if (!source.matches("[0-9]+\\.[0-9]+\\.[0-9]+") || !target.matches("[0-9]+\\.[0-9]+\\.[0-9]+")) return false;
+        String[] from = source.split("\\."), to = target.split("\\.");
+        return from[0].equals(to[0]) && from[1].equals(to[1]) && patch(target).compareTo(patch(source)) >= 0;
+    }
+
+    private static java.math.BigInteger patch(String version) {
+        return new java.math.BigInteger(version.substring(version.lastIndexOf('.') + 1));
+    }
+
+    /** Topology-only inspection retains clarification when configuration evidence is unavailable. */
     public static List<MappingChoice> mappingChoices(String moduleJson, String pack) throws StudioBuildException {
+        return mappingChoices(moduleJson, "", pack);
+    }
+
+    /** Only a configuration ID linked to exactly one pack-declared configuration class resolves a shared runtime class. */
+    public static List<MappingChoice> mappingChoices(String moduleJson, String configurationJson, String pack)
+            throws StudioBuildException {
         try {
             JsonNode root = read(moduleJson);
+            Map<String, JsonNode> configs = configurationJson == null || configurationJson.isBlank()
+                    ? Map.of() : configurations(read(configurationJson));
             List<MappingChoice> choices = new ArrayList<>();
             Set<ComponentRef> seen = new HashSet<>();
             for (JsonNode flow : root.path("flows")) {
@@ -48,7 +179,7 @@ public final class IkasanRuntimeImport {
                     ComponentRef ref = new ComponentRef(required(flow, "name"), required(element, "componentName"));
                     if (!seen.add(ref)) continue;
                     var candidates = exactCandidates(element, pack);
-                    if (candidates.size() > 1) choices.add(new MappingChoice(ref, candidates.stream().map(ComponentMeta::getName).sorted().toList()));
+                    if (candidates.size() > 1 && inferredVariant(element, configs, candidates) == null) choices.add(new MappingChoice(ref, candidates.stream().map(ComponentMeta::getName).sorted().toList()));
                 }
             }
             return List.copyOf(choices);
@@ -78,21 +209,53 @@ public final class IkasanRuntimeImport {
                 throw problem("Supply a valid application Java package.");
             var manifest = ComponentLibrary.getMetaPackManifest(pack);
             String runtimeVersion = topology.path("ikasanVersion").asText("");
-            if (!runtimeVersion.isBlank() && !runtimeVersion.equals(manifest.ikasanVersion()))
-                throw problem("The export uses Ikasan " + runtimeVersion + "; select its matching meta-pack. Import before migrating.");
+            if (!runtimeVersion.isBlank() && !runtimeVersion.equals(manifest.ikasanVersion())
+                    && !forwardPatch(runtimeVersion, manifest.ikasanVersion()))
+                throw problem("The export uses Ikasan " + runtimeVersion + "; select its matching meta-pack or a newer patch in the same major/minor line. Downgrades and cross-minor/major imports require a separate migration.");
             JsonNode configuration = configurationJson == null || configurationJson.isBlank()
                     ? JSON.createArrayNode() : read(configurationJson);
             Map<String, JsonNode> configurations = configurations(configuration);
             List<String> review = new ArrayList<>();
-            review.add("Runtime JSON does not include Java implementations, dependencies, Spring wiring or all builder settings. Review these before building or running.");
-            review.add("Project ports and build settings use Studio defaults. Module, flow and invoker configuration is retained for reference, not automatically applied.");
-            review.add("Flows are imported MANUAL. Original topology and configuration are retained in model.json under " + SOURCE_FIELD + ". They may contain credentials; review before sharing.");
+            List<ReviewItem> reviewItems = new ArrayList<>();
+            if (!runtimeVersion.isBlank() && !runtimeVersion.equals(manifest.ikasanVersion()))
+                review.add("Patch upgrade: export Ikasan " + runtimeVersion + " imported using " + pack
+                        + " (Ikasan " + manifest.ikasanVersion() + "). Generated dependencies target the newer patch."
+                        + " Review API/configuration differences and compile and test before starting flows; compatibility is not guaranteed.");
             if (runtimeVersion.isBlank()) review.add("The export has no ikasanVersion; verify the selected meta-pack against the original application.");
             Module base = new Module(pack);
             base.setName(required(topology, "name"));
             base.setApplicationPackageName(packageName);
+            JsonNode port = topology.get("port");
+            if (port != null && !port.isNull()) {
+                String supplied = port.asText();
+                if (!(port.isIntegralNumber() || port.isTextual()) || !supplied.matches("[0-9]{1,5}")
+                        || Integer.parseInt(supplied) < 1 || Integer.parseInt(supplied) > 65535)
+                    throw problem("The module metadata port must be an integer from 1 to 65535. Correct the export before importing.");
+                base.setPort(Integer.toString(Integer.parseInt(supplied)));
+            }
             base.defaultUnsetMandatoryProperties();
+            if (port == null || port.isNull()) {
+                review.add("Application HTTP port was not supplied in the module metadata. Verify Studio's default port "
+                        + base.getPort() + " against the original application before running.");
+            }
+            if (base.getH2PortNumber() == null || base.getH2WebPortNumber() == null) {
+                Set<String> usedPorts = new HashSet<>(); usedPorts.add(base.getPort());
+                if (base.getH2PortNumber() != null) usedPorts.add(base.getH2PortNumber());
+                if (base.getH2WebPortNumber() != null) usedPorts.add(base.getH2WebPortNumber());
+                for (String key : List.of("h2DbPortNumber", "h2WebPortNumber")) if (base.getPropertyValue(key) == null) {
+                    String fallback = Objects.toString(base.getComponentMeta().getMetadata(key).getDefaultValue(), "");
+                    if (!fallback.matches("[0-9]{1,5}") || Integer.parseInt(fallback) < 1
+                            || Integer.parseInt(fallback) > 65535 || !usedPorts.add(Integer.toString(Integer.parseInt(fallback))))
+                        throw problem("H2 ports cannot be derived from HTTP port " + base.getPort() + " and this pack has no safe fallback. Supply explicit H2 ports in a Studio model import.");
+                    base.setPropertyValue(key, fallback);
+                }
+                review.add("H2 ports could not be derived within 1–65535 from application HTTP port " + base.getPort()
+                        + ". Using H2 database port " + base.getH2PortNumber() + " and web console port " + base.getH2WebPortNumber()
+                        + " instead. Review these local ports before running.");
+            }
             ObjectNode design = (ObjectNode) JSON.readTree(ComponentIO.toJson(base));
+            // Runtime metadata supplies per-flow startup controls, not a module-wide default.
+            // All imported flows receive an explicit setting below.
             design.put("flowStartupType", "MANUAL");
             if (topology.hasNonNull("description")) design.set("description", topology.get("description"));
             // Runtime module 'version' is the application's version, not Studio's meta-pack ID.
@@ -106,7 +269,7 @@ public final class IkasanRuntimeImport {
             for (JsonNode flow : topology.path("flows")) {
                 String name = required(flow, "name");
                 if (!names.add(name)) throw problem("Duplicate flow name: " + name);
-                flows.add(flow(flow, pack, configurations, usedConfigurations, review, componentMappings));
+                flows.add(flow(flow, pack, configurations, usedConfigurations, review, componentMappings, reviewItems));
             }
             for (String id : configurations.keySet()) if (!usedConfigurations.contains(id))
                 review.add("Configuration " + id + ": retained only; no supported component mapping applied (module, flow, invoker or unmatched resource).");
@@ -119,7 +282,7 @@ public final class IkasanRuntimeImport {
                 if (!edges(flows.get(i)).equals(edges(roundTrip.path("flows").get(i))))
                     throw problem("Flow " + flows.get(i).path("name").asText() + ": graph cannot be represented without changing transitions.");
             }
-            return new Result(result, review);
+            return new Result(result, review, reviewItems);
         } catch (StudioBuildException e) {
             throw e;
         } catch (Exception e) {
@@ -129,7 +292,8 @@ public final class IkasanRuntimeImport {
     }
 
     private static ObjectNode flow(JsonNode input, String pack, Map<String, JsonNode> configs,
-                                   Set<String> used, List<String> review, Map<ComponentRef, String> mappings) throws Exception {
+                                   Set<String> used, List<String> review, Map<ComponentRef, String> mappings,
+                                   List<ReviewItem> reviewItems) throws Exception {
         String flowName = required(input, "name");
         if (!input.path("consumer").isObject() || !input.path("flowElements").isArray()
                 || !input.path("transitions").isArray()) throw problem("Flow " + flowName + ": consumer, flowElements and transitions are required.");
@@ -161,15 +325,32 @@ public final class IkasanRuntimeImport {
             for (JsonNode edge : outgoing.getOrDefault(node, List.of())) pending.add(required(edge, "to"));
         }
         if (reached.size() != components.size()) throw problem("Flow " + flowName + ": disconnected components are not imported silently.");
-        ObjectNode result = JSON.createObjectNode().put("name", flowName).put("flowStartupType", "MANUAL");
+        JsonNode declaredStartup = input.get("flowStartupType");
+        String startup;
+        if (declaredStartup == null || declaredStartup.isNull()) {
+            startup = "MANUAL";
+            review.add("Flow '" + flowName + "': startup type was not supplied. Imported as MANUAL; verify the original startup setting before running.");
+        } else if (declaredStartup.isTextual()
+                && Set.of("AUTOMATIC", "MANUAL", "DISABLED").contains(declaredStartup.textValue())) {
+            startup = declaredStartup.textValue();
+        } else {
+            throw problem("Flow '" + flowName + "': unrecognised startup type. Expected AUTOMATIC, MANUAL or DISABLED; correct the export before importing.");
+        }
+        ObjectNode result = JSON.createObjectNode().put("name", flowName).put("flowStartupType", startup);
         if (input.hasNonNull("configurationId")) result.set("configurationId", input.get("configurationId"));
         result.set("transitions", input.get("transitions").deepCopy());
         ArrayNode elements = result.putArray("flowElements");
         for (var entry : components.entrySet()) {
             JsonNode raw = entry.getValue();
             ComponentRef ref = new ComponentRef(flowName, entry.getKey());
-            ComponentMeta meta = resolve(raw, pack, mappings.get(ref));
-            if (mappings.containsKey(ref)) review.add(flowName + " → " + entry.getKey() + ": selected variant " + meta.getName() + ".");
+            ComponentMeta meta = resolve(raw, pack, mappings.get(ref), configs);
+            if (!mappings.containsKey(ref) && exactCandidates(raw, pack).size() > 1) {
+                String message = flowName + " → " + entry.getKey() + ": inferred variant " + meta.getName()
+                        + " from its linked configuration class " + configurationClass(meta)
+                        + ". Review the original message-provider wiring before running.";
+                review.add(message);
+                reviewItems.add(new ReviewItem(ReviewKind.INFERRED_VARIANT, ref, meta.getName(), configurationClass(meta), message));
+            }
             if (entry.getKey().equals(consumer) != meta.isConsumer()) throw problem("Flow " + flowName + ": invalid consumer placement.");
             List<JsonNode> routes = outgoing.getOrDefault(entry.getKey(), List.of());
             if (routes.size() > 1 && !meta.isRouter()) throw problem("Flow " + flowName + ": branching component is not a supported router.");
@@ -181,14 +362,26 @@ public final class IkasanRuntimeImport {
             for (String key : List.of("description", "configurationId"))
                 if (raw.hasNonNull(key)) target.set(key, raw.get(key));
             if (meta.isGeneratesUserImplementedClass()) {
-                target.put("userImplementedClassName", required(raw, "implementingClass"));
+                String implementation = required(raw, "implementingClass");
+                boolean wrapped = meta.isUseImplementingClassInFactory();
+                if (wrapped) {
+                    String contract = meta.getVerificationImplementationContract();
+                    if (contract == null || contract.isBlank() || contract.equals(meta.getImplementingClass()))
+                        throw problem("Component " + entry.getKey() + ": the pack must declare a delegate implementation contract for its wrapper.");
+                    implementation = contract;
+                }
+                target.put("userImplementedClassName", implementation);
                 if (!meta.getAllowableProperties().containsKey("requiresStub"))
                     throw problem("Component " + entry.getKey() + ": the pack cannot preserve this existing implementation without generating a replacement.");
                 target.put("requiresStub", false);
                 for (String typeProperty : List.of("fromType", "toType")) {
                     if (meta.getAllowableProperties().containsKey(typeProperty)) target.put(typeProperty, "java.lang.Object");
                 }
-                review.add(flowName + " → " + entry.getKey() + ": supply existing implementation " + required(raw, "implementingClass") + " and its Spring bean/wiring; no replacement stub requested.");
+                String message = flowName + " → " + entry.getKey() + (wrapped
+                        ? ": supply the original delegate implementing " + implementation + " for wrapper " + meta.getImplementingClass() + " and its Spring bean/wiring."
+                        : ": supply existing implementation " + implementation + " and its Spring bean/wiring.");
+                review.add(message);
+                reviewItems.add(new ReviewItem(ReviewKind.IMPLEMENTATION, ref, implementation, "", message));
             }
             if (meta.isRouter()) {
                 if (routes.stream().anyMatch(e -> e.path("name").asText().contains(",")))
@@ -203,9 +396,14 @@ public final class IkasanRuntimeImport {
                 if (config == null) review.add(flowName + " → " + entry.getKey() + ": no configuration supplied for " + id + ".");
                 else {
                     used.add(id);
-                    applyConfiguration(target, config, meta, flowName, review);
+                    applyConfiguration(target, config, meta, flowName, review, reviewItems);
                 }
             }
+            String inputTypeProperty = meta.getExpectedInputTypeProperty();
+            var inputType = inputTypeProperty == null ? null : meta.getAllowableProperties().get(inputTypeProperty);
+            if (inputType != null && inputType.isMandatory() && !target.hasNonNull(inputTypeProperty))
+                review.add(flowName + " → " + entry.getKey() + ": supply " + inputTypeProperty
+                        + " (the input Java class); runtime metadata does not include this builder setting.");
             if (entry.getKey().equals(consumer)) result.set("consumer", target); else elements.add(target);
         }
         return result;
@@ -214,10 +412,13 @@ public final class IkasanRuntimeImport {
     private static List<ComponentMeta> exactCandidates(JsonNode raw, String pack) throws StudioBuildException {
         String type = required(raw, "componentType"), implementation = required(raw, "implementingClass");
         return ComponentLibrary.getPaletteComponentList(pack).stream()
-                .filter(m -> type.equals(m.getComponentType()) && implementation.equals(m.getImplementingClass())).toList();
+                // Keep persisted Studio identities compatible; runtime identities are explicit pack declarations.
+                .filter(m -> type.equals(m.getComponentType()) && (implementation.equals(m.getImplementingClass())
+                        || implementation.equals(m.getRuntimeImplementingClass()))).toList();
     }
 
-    private static ComponentMeta resolve(JsonNode raw, String pack, String selectedVariant) throws StudioBuildException {
+    private static ComponentMeta resolve(JsonNode raw, String pack, String selectedVariant,
+                                         Map<String, JsonNode> configs) throws StudioBuildException {
         String type = required(raw, "componentType"), implementation = required(raw, "implementingClass");
         if (!javax.lang.model.SourceVersion.isName(implementation))
             throw problem("Component " + required(raw, "componentName") + ": implementingClass must be a Java class name.");
@@ -227,6 +428,10 @@ public final class IkasanRuntimeImport {
                     .orElseThrow(() -> problem("Selected variant does not match runtime component " + raw.path("componentName").asText()));
         }
         if (candidates.size() == 1) return candidates.get(0);
+        if (candidates.size() > 1) {
+            ComponentMeta inferred = inferredVariant(raw, configs, candidates);
+            if (inferred != null) return inferred;
+        }
         if (candidates.size() > 1) throw problem("Component " + required(raw, "componentName") + ": select a variant explicitly: "
                 + String.join(", ", candidates.stream().map(ComponentMeta::getName).toList())
                 + ". Runtime JSON does not identify all message-provider wiring.");
@@ -241,21 +446,52 @@ public final class IkasanRuntimeImport {
         return candidates.get(0);
     }
 
+    private static String configurationClass(ComponentMeta meta) {
+        String declared = meta.getRuntimeConfigurationClass();
+        var property = meta.getAllowableProperties().get("configuration");
+        return declared != null ? declared : property == null ? null : property.getUsageDataType();
+    }
+
+    private static ComponentMeta inferredVariant(JsonNode raw, Map<String, JsonNode> configs,
+                                                  List<ComponentMeta> candidates) {
+        JsonNode config = configs.get(raw.path("configurationId").asText(""));
+        if (config == null) return null;
+        String type = config.path("implementingClass").asText("");
+        if (type.isBlank()) return null;
+        var matches = candidates.stream().filter(candidate -> type.equals(configurationClass(candidate))).toList();
+        // No guessing from names, cron expressions, parameter values, nearby records or Java class inheritance.
+        return matches.size() == 1 ? matches.get(0) : null;
+    }
+
     private static void applyConfiguration(ObjectNode target, JsonNode config, ComponentMeta meta,
-                                           String flowName, List<String> review) throws StudioBuildException {
-        var configurationProperty = meta.getAllowableProperties().get("configuration");
-        String configurationClass = meta.getRuntimeConfigurationClass();
-        if (configurationClass == null && configurationProperty != null) configurationClass = configurationProperty.getUsageDataType();
+                                           String flowName, List<String> review, List<ReviewItem> reviewItems) throws StudioBuildException {
+        String configurationClass = configurationClass(meta);
         boolean matchingClass = config.path("implementingClass").asText().equals(configurationClass);
+        List<String> unapplied = new ArrayList<>();
         for (JsonNode parameter : config.path("parameters")) {
             String name = required(parameter, "name");
-            var property = meta.getAllowableProperties().get(name);
+            String studioProperty = meta.runtimeConfigurationProperty(name);
+            var property = studioProperty == null ? null : meta.getAllowableProperties().get(studioProperty);
             JsonNode value = parameter.get("value");
-            if (matchingClass && meta.getRuntimeConfigurationProperties().contains(name) && property != null
-                    && value != null && !value.isNull() && compatible(value, property.getPropertyDataType())) {
-                target.set(name, value.deepCopy());
-                review.add(flowName + " → " + target.path("componentName").asText() + ": applied configuration field " + name + ".");
-            } else review.add(flowName + " → " + target.path("componentName").asText() + ": retained configuration field " + name + " without applying it; review original configuration.");
+            // Unset REST parameters are provenance, not work for the developer to resolve.
+            if (value == null || value.isNull()) continue;
+            if (matchingClass && studioProperty != null && property != null
+                    && compatible(value, property.getPropertyDataType())) {
+                target.set(studioProperty, value.deepCopy());
+            } else if (!matchingClass || !value.equals(meta.getRuntimeConfigurationDefaults().get(name))) {
+                // Match typed JSON against a default verified for this exact pack/component construction.
+                // Unknown fields, changed defaults and mismatched configuration classes still need review.
+                unapplied.add(name);
+            }
+        }
+        if (!unapplied.isEmpty()) {
+            String message = flowName + " → " + target.path("componentName").asText()
+                + ": review configuration fields not applied: " + String.join(", ", unapplied)
+                + ". Compare with the original configuration before running.";
+            review.add(message);
+            reviewItems.add(new ReviewItem(ReviewKind.CONFIGURATION,
+                    new ComponentRef(flowName, target.path("componentName").asText()),
+                    String.join(", ", unapplied.stream().sorted().toList()), "", message));
         }
     }
 
@@ -277,8 +513,10 @@ public final class IkasanRuntimeImport {
             if (!entry.path("parameters").isArray()) throw problem("Configuration " + id + ": parameters must be an array.");
             Set<String> names = new HashSet<>();
             for (JsonNode parameter : entry.get("parameters")) {
-                if (!names.add(required(parameter, "name")) || !parameter.has("value"))
-                    throw problem("Configuration " + id + ": duplicate parameter or missing value.");
+                if (!names.add(required(parameter, "name")))
+                    throw problem("Configuration " + id + ": duplicate parameter.");
+                // Ikasan REST uses NON_NULL serialization: an absent value is an unset parameter.
+                // Keep the original record unchanged; applyConfiguration never applies absent/null values.
             }
             if (result.putIfAbsent(id, entry) != null) throw problem("Duplicate configurationId: " + id);
         }

@@ -11,6 +11,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TestMailServerFailureInjectionTest {
     @Test
+    void ownedEndpointSnapshotsDoNotProbeOrStopServers() {
+        var project = mock(Project.class);
+        var stopped = new AtomicBoolean();
+        var service = new TestMailServerSessionService(project, mock(Alarm.class), () -> 0,
+                (host, port) -> { throw new AssertionError("Snapshot must not probe sockets"); });
+        try {
+            service.registerOwned("localhost", 1025, () -> stopped.set(true));
+            assertEquals(java.util.List.of(new HarnessStopImpact.Endpoint("SMTP", "localhost", 1025)), service.ownedEndpoints());
+            assertFalse(stopped.get());
+            service.stopAnyOwned();
+            assertTrue(service.ownedEndpoints().isEmpty());
+        } finally { service.dispose(); }
+    }
+
+    @Test
     void immediatelyExitedHarnessLosesOwnershipAfterStartupGrace() throws Exception {
         var project = mock(Project.class);
         when(project.getService(UiContext.class)).thenReturn(mock(UiContext.class));
@@ -34,6 +49,25 @@ class TestMailServerFailureInjectionTest {
             assertFalse(service.hasAnyOwned());
             assertFalse(service.stopAnyOwned());
             assertFalse(stopped.get(), "Must not stop a later external listener");
+        } finally { service.dispose(); }
+    }
+
+    @Test
+    void toolbarReadinessRequiresOwnedAndConfirmedListeningHarness() {
+        var project = mock(Project.class);
+        when(project.getService(UiContext.class)).thenReturn(mock(UiContext.class));
+        var listening = new AtomicBoolean();
+        var service = new TestMailServerSessionService(project, mock(Alarm.class), () -> 0,
+                (host, port) -> listening.get());
+        try {
+            assertFalse(service.hasAnyOwnedListening());
+            service.registerOwned("localhost", 2525, () -> { });
+            assertFalse(service.hasAnyOwnedListening(), "Starting is not confirmed listening");
+            listening.set(true);
+            service.probeAndUpdateState();
+            assertTrue(service.hasAnyOwnedListening());
+            service.stopAnyOwned();
+            assertFalse(service.hasAnyOwnedListening(), "Cached listening alone does not establish ownership");
         } finally { service.dispose(); }
     }
 

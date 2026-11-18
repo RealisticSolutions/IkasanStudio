@@ -81,7 +81,9 @@ The manifest declares the pack's exact build platform:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "packVersion": "0.1.0-SNAPSHOT",
+  "generatorApiVersion": 4,
   "id": "V4.1.6",
   "ikasanVersion": "4.1.6",
   "javaVersion": "17",
@@ -152,6 +154,9 @@ The usual process is:
 
 Use the corresponding Ikasan source tree when validating APIs and generated code. Do not infer compatibility
 from another major version.
+
+For a separate custom-pack project and the install/restart workflow, see the
+[custom meta-pack handover](../../../../../docs/CustomMetaPackHandover.md).
 
 ## Further requirements
 
@@ -263,7 +268,15 @@ changes the payload contract. This mode verifies processing, not scheduling accu
 
 ## Runtime JSON import mappings
 
-`ComponentMeta.runtimeConfigurationProperties` is an optional list of runtime configuration parameter names verified to map directly to same-named Studio properties. The importer also requires the configuration JSON's `implementingClass` to match `runtimeConfigurationClass`, or the `configuration` property's `usageDataType` when no explicit class is declared. Declare only verified scalar or string-collection mappings for that pack's Ikasan API. Unknown fields and incompatible value types remain in the retained source snapshot and are reported, never guessed. The bundled mappings cover verified scalar settings for scheduled, JMS, FTP/SFTP, local-file, email and logging components.
+`runtimeImplementingClass` optionally declares the exact concrete class exported by a running module when it differs from the historical `implementingClass` used in Studio models. Runtime import matches either identity, with the same component contract check; persisted models and generation keep `implementingClass` and `additionalKey`. This is an explicit class mapping, never a name, package-prefix or inheritance guess. FTP/SFTP producers use it because their historical Studio identity is a shared builder marker. Configuration-class and field-type validation still apply.
+
+`ComponentMeta.runtimeConfigurationProperties` is an optional list of Studio properties verified to map to runtime configuration parameters. Names match exactly by default. The importer also requires the configuration JSON's `implementingClass` to match `runtimeConfigurationClass`, or the `configuration` property's `usageDataType` when no explicit class is declared. Declare only verified scalar or string-collection mappings for that pack's Ikasan API. Unknown fields and incompatible value types remain in the retained source snapshot and are reported, never guessed. The bundled mappings cover verified scalar settings for scheduled, JMS, FTP/SFTP, local-file, email and logging components.
+
+`runtimeConfigurationMappings` declares only name discrepancies, as REST parameter → Studio property, for example `{"mailHost":"mailhost"}`. Targets must be listed in `runtimeConfigurationProperties`. Do not add identity mappings or multiple REST names for the same target; mappings cannot shadow another exact runtime parameter. Import and native model save/load use the same binding in both directions, keeping exported parameter names correct for Ikasan. Incorrect value types or configuration classes remain unapplied and require review. Unrecognised names are never matched fuzzily. Existing application-property labels and Java setter overrides remain independent of the runtime parameter name.
+
+`runtimeConfigurationDefaults` optionally maps runtime parameter names to typed, non-null JSON defaults verified against the generated runtime construction for this pack. When the exact configuration class matches, an unmapped value equal to its declared default is preserved in provenance without an unnecessary review warning. This does not apply configuration values or add generator setters. Changed values, unknown fields and mismatched classes still require review; strings are not coerced into numbers or booleans. Verify both the runtime default and any builder overrides before declaring a default. Scheduled Consumer declares the empty `cronExpressions` list, empty `passthroughProperties` map, `persistentRecovery=true` and `recoveryTolerance=1800000` for V3, V4 and V5. FTP Consumer declares the same inherited scheduling/recovery defaults plus `provideRelativePath=false`, verified against `FtpConsumerConfiguration` and the FTP builder in all three versions.
+
+Local File Consumer imports the typed `filenames` list in V3, V4 and both V5 packs. Its verified unmapped defaults are `cronExpressions=[]`, `dynamicFileName=false`, `followSymbolicLinks=true`, `passthroughProperties={}`, `persistentRecovery=true` and `recoveryTolerance=1800000`, checked against `FileConsumerConfiguration`, its inherited `ScheduledConsumerConfiguration` and the file consumer builder. SFTP Consumer imports `filterDuplicates`, `filterOnFilename`, `filterOnLastModifiedDate` and `moveOnSuccess`; it declares the inherited scheduling/recovery defaults plus `provideRelativePath=false`. SFTP Producer declares `dontUseFileRename=false`. Changed unmapped values still require review. The [configuration audit](../../../../../docs/RuntimeImportConfigurationAudit.md) records sources, remaining unsupported fields and the independent field/type coverage fixture.
 
 Runtime implementation classes may identify several palette variants. The importer asks the developer to select among exact matches; configuration class names alone do not identify message-provider wiring. User implementations require the existing `requiresStub=false` contract to avoid replacement stub generation. See [runtime JSON import](../../../../../docs/IkasanRuntimeJson.md).
 
@@ -271,6 +284,110 @@ Runtime implementation classes may identify several palette variants. The import
 
 Set `propertyDataType` to `java.util.List` or `java.util.Map`, with `usageDataType` set to `java.util.List<String>` or `java.util.Map<String, String>`. This explicitly selects structured string-collection editing, validation, JSON persistence and Java generation. Do not use it for collections of objects or class/bean references. Defaults must be arrays of strings or objects with string values. Lists preserve duplicates and order; maps require unique keys. Null means unset, while empty arrays/objects are explicit values.
 
-Declare a property in `runtimeConfigurationProperties` only after checking the runtime configuration getter and builder setter for that pack. The initial verified collection mappings are Email Producer's three recipient lists and `extendedMailSessionProperties`, in both packs. Existing `usageDataType`-only list fields retain their original handling.
+Declare a property in `runtimeConfigurationProperties` only after checking the runtime configuration getter and builder setter for that pack. Verified collection mappings include Email Producer's three recipient lists and `extendedMailSessionProperties`, plus Spring JMS Producer/Consumer `connectionFactoryJndiProperties` and `destinationJndiProperties`. Complete JMS maps take precedence over the corresponding individual JNDI setters during generation, including defaults; empty maps must stay empty. Existing `usageDataType`-only list fields retain their original handling.
 
 Collection properties with a `propertyConfigFileLabel` emit JSON in application.properties and are read by the component factory's `stringCollectionProperties_en.ftl` helper. Lists also accept older comma-separated deployment overrides. Collection setters without an external property label receive generated mutable Java collections. Test escaping, empty/unset, wrong entry types, legacy input and both runtime imports and Studio persistence before adding further mappings.
+
+### Flow-test delivery strategies
+
+`flowTestDeliveryStrategy` selects receiver assertions independently of the component's
+Java implementation: `none`, `file`, `ftp`, `sftp`, or `smtp`. Bundled producers declare
+this explicitly. Older packs without the declaration retain the legacy capability-flag
+selection. The general scaffold delegates delivery interpretation to `FlowTestDelivery`.
+
+SMTP components declare `flowTestRecipientProperties` as groups of alternative property
+names, for example `[["toRecipient", "toRecipients"], ["ccRecipient", "ccRecipients"],
+["bccRecipient", "bccRecipients"]]`. Each group contributes literal addresses from one
+configured property (a string or list). Conflicting alternatives, duplicate addresses,
+expressions, or non-simple addresses leave recipient review guidance instead of an inferred
+count. Clear configurations generate one expected body per recipient. These expectations
+are a generation-time snapshot, deliberately visible and editable in the developer's test;
+configuration changes do not silently update developer-owned assertions.
+
+
+## Environment-specific component settings
+
+Give built-in scalar and string-list/map setter properties a `propertyConfigFileLabel`
+so configured values are written to `application.properties` and injected into generated
+factories. New keys should identify both the flow and the component to avoid collisions
+between multiple instances. Preserve published keys when extending an existing pack.
+Unset optional values must remain absent, while explicit zero and false values must survive.
+
+Use `propertyDataType: java.util.Map` or `java.util.List` for string collections, as well as
+the corresponding generic `usageDataType`; this enables structured editing and property
+serialization. Do not encode Java expressions as collection values.
+
+Keep Java implementations, custom configuration beans, class literals and configuration
+resource identifiers as references/identity rather than property bindings. A custom
+configuration bean remains an explicit extension point for developer-owned fields and
+behaviour; exposing standard settings must not replace or overwrite it.
+
+### Historical Studio property names
+
+`legacyPropertyAliases` maps old Studio property names to canonical properties. Aliases are applied when reading legacy flat models and Studio document containers, and when converting legacy models for saving. Different values under both names are rejected rather than choosing one. Saves use canonical names. Alias sources cannot shadow current properties or form chains. Keep existing `propertyConfigFileLabel` strings when renaming a property so application-property overrides remain compatible. The bundled packs correct `hasAttachments` to `hasAttachment`, SFTP `knownHostFilename` to `knownHostsFilename`, and SFTP producer `cleanupChunks` to `cleanUpChunks`. See the [property naming audit](../../../../../docs/MetaPackPropertyNamingAudit-2026-10-26.md) for source checks and intentional API differences.
+
+The historical aliases are temporary for this development cycle and are scheduled for removal in the next release. Do not use `legacyPropertyAliases` for REST naming differences. Before removal, resave development projects/examples with canonical names and complete the cleanup checklist in the naming audit.
+
+
+## Property validation safety (generator API 2)
+
+Property metadata `validation` expressions use [RE2/J](https://github.com/google/re2j),
+with full-string matching and a maximum expression length of 4,096 UTF-16 characters.
+RE2/J avoids catastrophic backtracking. Lookahead/lookbehind, backreferences,
+possessive quantifiers and Java-only character classes/flags are unsupported.
+Counted repetitions are subject to RE2/J's own limits (at most 1,000).
+Unsupported expressions fail pack validation with the component/property path and
+migration guidance; Studio never skips the rule or falls back to Java regex.
+Use RE2/J's syntax and character-class semantics, including its treatment of Unicode
+and line terminators. Test accepted and rejected values, not only compilation.
+
+For Java package names, use `"validationKind": "JAVA_PACKAGE"` instead of a keyword
+negative-lookahead expression. This validates each Java identifier and rejects Java
+keywords, boolean/null literals and the single underscore using the Java 17 language
+name contract (also valid for released Ikasan 5 Java 25 packages). An optional
+`validation` expression is applied in addition to the semantic rule. Unknown kinds
+are rejected. The same predicate runs in the editor, saved-model readiness checks
+and AI proposal validation; the AI component catalogue includes `validationKind`.
+
+Packs using `validationKind` must declare `generatorApiVersion: 2`. Current Studio
+accepts API 1 packs whose expressions satisfy this RE2/J policy; older engines reject
+API 2 packs rather than silently ignoring their semantic rules. Pack authors migrating
+rules should publish a new immutable revision and test with the current generator.
+The Java API's `getValidationPattern()` now returns `com.google.re2j.Pattern`;
+source consumers must rebuild, and should use `hasValidation()` and
+`matchesValidation(value)` to include semantic rules.
+
+This policy applies to **meta-pack property validation**, not to regex values in the
+application being generated. For example, FTP filename patterns remain Java regex
+expressions interpreted by the Ikasan runtime. The FTP metadata check still rejects
+a leading bare `*`, `+` or `?` without changing those runtime expressions.
+
+The released V5.1.0 adapter and ExampleIkasan5 example advance from pack revision
+1.0.1 to 1.0.2. Existing models locked to 1.0.1 require the normal explicit
+**Adopt Installed Meta-Pack Revision…** workflow and its backup; no lock is bypassed.
+
+
+## Independent H2 (generator API 3)
+
+The engine now supplies `IndependentH2.java`; packs no longer provide
+`h2StartStopPom_en.ftl`. H2 is resolved from the project's own Maven runtime classpath,
+with no separate pinned server POM. API 3 introduced this contract; current engines
+still accept API 1/2 packs. See [independent H2](../../../../../docs/IndependentH2.md)
+for lifecycle, revision adoption and database compatibility details.
+
+
+## Per-component harness overrides (generator API 4)
+
+Official API 4 factory templates call the generated `StudioHarnessOverrides.apply` adapter
+after building supported FTP, SFTP, email and JMS-reader endpoints. Use
+`HarnessOverrides.selectionId(module, flow, flowElement)` for the selection identity;
+a JMS reader follows its owning producer. The generator supplies `harnessSupport`
+for the factory's Environment injection and emits the common adapter, separate
+`studio-harness.properties` and launch inventory. The `ftps` builder flag must also
+honour `StudioHarnessOverrides.isEnabled` before the component is built.
+
+Packs using these APIs must declare `generatorApiVersion: 4` so older engines reject
+them before rendering. Older packs remain loadable; their unchanged factories do not
+offer the new selective overrides. The application properties import the harness file's
+private namespace; importing the file never enables an override. Studio enables only
+the component identities saved in the selected IntelliJ Application configuration.

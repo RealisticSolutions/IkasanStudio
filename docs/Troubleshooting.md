@@ -29,6 +29,8 @@ Screen shot for changing catalog as described above
 
 <img src="images/AddCatalog.png" alt="Ikasan Studio catalog" width="600"/>
 
+Studio’s **Waiting for the generated Maven module** screen reports the expected generated directory and IntelliJ’s registered content roots. Studio rechecks readiness automatically, including after a missed Maven roots event. If Maven reports import completion but Studio is still waiting, click **Retry**. If roots remain absent, use **Reload Maven project** on the waiting screen to request a full reimport. The equivalent **Reload All Maven Projects** action is available in the Maven tool window. Inspect Maven’s import errors if roots remain unavailable. Retry only checks readiness; it does not request an import. An import-completed log entry alone does not establish that every required content root remains registered.
+
 For custom component failures, inspect developer-owned implementations under `user/`; generated stubs still need business logic. After changing Maven dependencies or generated code, allow import/build to finish and restart the running module.
 
 If the problem remains, use **Tools → Ikasan Studio → Collect Ikasan Studio Diagnostics…**. Review the local ZIP and include the Studio version, IntelliJ IDEA version/edition and full build, operating system, selected Ikasan version, reproduction steps and expected/actual behaviour in your support report. Model or application-log attachments require separate review; they are not automatically included. See [diagnostics and privacy](DiagnosticsAndPrivacy.md).
@@ -51,3 +53,37 @@ The same failure was reproduced on 2 October after an automated wrapper update, 
 `file:/intellij.libraries.ktor.client`, even with configuration caching disabled. The SDK JARs
 were present; deleting SDK caches was unnecessary. Dependabot now ignores the specific wrapper
 version 9.8.0 to prevent recurrence; later versions remain eligible for compatibility review.
+
+
+## Module process starts but flow controls are missing
+
+Studio shows flow controls only after it can read real flow states from the module's REST
+API. A running JVM or an attached debugger does not establish that Spring Boot completed
+startup. Leftover JMS listener threads can keep a JVM alive after startup has failed.
+
+Studio observes module process output for Spring Boot startup-failure reports. A reported
+HTTP port conflict produces an error notification and a persistent banner naming the port.
+**Show Run/Debug output** opens the launch output. Stop the conflicting module, or change
+the current module's HTTP port in Studio, update code and restart it. Changing a port in
+properties does not move a server that is already running.
+
+If Ikasan begins module cleanup before Spring reports startup completion, Studio reports
+that premature shutdown even when the JVM remains alive and no exception is printed.
+The banner states that no cause was reported; it does not infer a port conflict. Inspect
+earlier output, or enable Spring Boot debug logging for a diagnostic relaunch. An explicit
+operator stop and ordinary shutdown after completed startup do not trigger this warning.
+
+The diagnostic also covers coloured console output, fatal failures reported after Spring
+prints “Started Application”, and unsuccessful startup exits.
+It resets on the next launch. It does not terminate either application or infer a port
+conflict from a temporary 404, a slow startup or an unrelated connector error. Output is
+examined in a bounded in-memory window; raw application output and credentials are not
+copied into notifications or plugin logs. Launches started before this observer was attached
+must be relaunched for output-based detection.
+
+If an imported project reports `method references are not supported in -source 7`
+while its root POM specifies Java 11 or later, IntelliJ may still hold an older
+Maven compiler model. Use **Reload All Maven Projects**, wait for import/indexing
+to finish, then build again. Studio imports request Maven refresh after code
+generation and JDK alignment; a failed Maven-server request can still require
+this manual retry. Preserve the Java level required by the selected Ikasan pack.

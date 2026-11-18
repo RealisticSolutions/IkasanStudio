@@ -82,7 +82,23 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
     private JButton regenerateClassButton;
     private boolean updateUserCodeManually;
     private JButton cancelEditsButton;
+    private javax.swing.JLabel harnessOverrideStatus;
     private final SimpleChangeListener listenerForAnyEditChanges;
+    /** Reveal a reported property, including optional rows hidden by the current search/collapse state. */
+    public void revealProperty(String property) {
+        ComponentPropertyEditRow row = componentPropertyEditBoxMap.get(property);
+        if (row == null) return;
+        if (propertySearchField != null) propertySearchField.setText(property);
+        ComponentInput input = row.getInputField();
+        if (input != null) SwingUtilities.invokeLater(() -> {
+            JComponent field = input.getFirstFocusComponent();
+            if (field != null && field.isShowing()) {
+                field.scrollRectToVisible(field.getVisibleRect());
+                field.requestFocusInWindow();
+            }
+        });
+    }
+
     private final Map<String, ComponentPropertyEditRow> componentPropertyEditBoxMap = new HashMap<>();
     private CompletableFuture<Void> latestGeneration = CompletableFuture.completedFuture(null);
 
@@ -492,6 +508,11 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
             org.ikasan.studio.intellij.testing.FlowTestRenameRefactoring.renameComponentAndSave(
                     project, context.getIkasanModule(), element, name);
             return true;
+        } catch (com.intellij.openapi.progress.ProcessCanceledException cancelled) {
+            throw cancelled;
+        } catch (org.ikasan.studio.intellij.testing.FlowTestRenameRefactoring.RenameBlockedException blocked) {
+            StudioUIUtils.displayIdeaWarnMessage(project, StudioBundle.message("flowTest.renameFailed", blocked.getMessage()));
+            return false;
         } catch (RuntimeException failure) {
             LOG.warn("Component test refactoring failed", failure);
             StudioUIUtils.displayIdeaWarnMessage(project, StudioBundle.message("flowTest.renameFailed", failure.getMessage()));
@@ -521,6 +542,9 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
             return org.ikasan.studio.intellij.psi.FlowPackageRefactoring.renameAndSave(plan, module, flow, name);
         } catch (com.intellij.openapi.progress.ProcessCanceledException cancelled) {
             throw cancelled;
+        } catch (org.ikasan.studio.intellij.testing.FlowTestRenameRefactoring.RenameBlockedException blocked) {
+            StudioUIUtils.displayIdeaWarnMessage(project, StudioBundle.message("message.FlowRenameFailed", blocked.getMessage()));
+            return false;
         } catch (RuntimeException failure) {
             LOG.warn("STUDIO: Flow package refactoring failed", failure);
             StudioUIUtils.displayIdeaWarnMessage(project, StudioBundle.message("message.FlowRenameFailed", failure.getMessage()));
@@ -966,6 +990,28 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
             gc1.weightx = 1;
             gc1.gridy = 0;
 
+            if (getSelectedComponent() instanceof Module module) {
+                var http = componentPropertyEditBoxMap.get(ComponentPropertyMeta.APPLICATION_PORT_NUMBER_NAME);
+                var database = componentPropertyEditBoxMap.get(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME);
+                var web = componentPropertyEditBoxMap.get(ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME);
+                if (http != null) {
+                    if (database != null) database.configureModulePortDefault(http, 1, componentInitialisation, module.hasAutomaticH2Default(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME));
+                    if (web != null) web.configureModulePortDefault(http, 2, componentInitialisation, module.hasAutomaticH2Default(ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME));
+                }
+            }
+            harnessOverrideStatus = null;
+            if (getSelectedComponent() instanceof FlowElement endpoint
+                    && !org.ikasan.studio.core.model.analysis.HarnessOverrides.kind(
+                    project.getService(UiContext.class).getIkasanModule(), endpoint).isEmpty()) {
+                JBPanel harnessStatusPanel = new JBPanel(new BorderLayout(0, JBUI.scale(4)));
+                harnessOverrideStatus = new com.intellij.ui.components.JBLabel();
+                JButton manage = new JButton(StudioBundle.message("harnessOverrides.manage"));
+                manage.addActionListener(event -> org.ikasan.studio.intellij.configuration.HarnessOverridesDialog.show(project));
+                harnessStatusPanel.add(harnessOverrideStatus, BorderLayout.NORTH);
+                harnessStatusPanel.add(manage, BorderLayout.SOUTH);
+                setSubPanel(propertiesEditorPanel, harnessStatusPanel, null, null, gc1);
+                refreshHarnessOverrideStatus();
+            }
             if (mandatoryTabley > 0) {
                 setSubPanel(propertiesEditorPanel, mandatoryPropertiesEditorPanel, StudioBundle.message("label.MandatoryProperties"), ThemeAwareColors.getImportantBorderColor(), gc1);
             }
@@ -993,6 +1039,20 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
                 applyPropertySearchFilter(propertySearchField.getText());
             }
         }
+    }
+
+    public void refreshHarnessOverrideStatus() {
+        if (harnessOverrideStatus == null || !(getSelectedComponent() instanceof FlowElement endpoint)) return;
+        var service = project.getService(org.ikasan.studio.intellij.execution.HarnessOverrideService.class);
+        if (service == null) return;
+        boolean enabled = service.isEnabled(endpoint);
+        boolean active = service.isActive(endpoint);
+        harnessOverrideStatus.setText("<html>" + StudioBundle.message(enabled ?
+                "harnessOverrides.enabled" : "harnessOverrides.disabled")
+                + (service.hasRunningLaunches() ? "<br>" + StudioBundle.message(active ?
+                "harnessOverrides.active" : "harnessOverrides.runningConfigured") : "") + "</html>");
+        harnessOverrideStatus.setToolTipText(StudioBundle.message("harnessOverrides.componentHelp",
+                active ? StudioBundle.message("harnessOverrides.active") : StudioBundle.message("harnessOverrides.none")));
     }
 
     /**
@@ -1367,6 +1427,11 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
                     .displayLabel(StudioBundle.message("conversion." + recipeKey)).build(), componentProperty.getValue());
         }
         ComponentPropertyEditRow componentPropertyEditRow = new ComponentPropertyEditRow(project, componentProperty, componentInitialisation, listenerForAnyEditChanges, componentPropertyEditBoxMap);
+        if (getSelectedComponent() instanceof Module) {
+            String key = componentProperty.getMeta().getPropertyName();
+            if (ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME.equals(key)) componentPropertyEditRow.prepareModulePortDefaultButton(1);
+            if (ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME.equals(key)) componentPropertyEditRow.prepareModulePortDefaultButton(2);
+        }
         if (!componentInitialisation && getSelectedComponent() instanceof Module
                 && VERSION.equals(componentProperty.getMeta().getPropertyName())) {
             var choice = componentPropertyEditRow.getInputField().getPropertyChoiceValueField();
@@ -1391,7 +1456,9 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
             return property;
         }
         ComponentPropertyMeta uiMeta = property.getMeta().toBuilder()
-                .choices(List.copyOf(ComponentLibrary.getMetapackList()))
+                .choices(componentInitialisation
+                        ? ComponentLibrary.getMetapackList(org.ikasan.studio.intellij.settings.IkasanStudioSettings.areSnapshotMetaPacksAllowed())
+                        : List.copyOf(ComponentLibrary.getMetapackList()))
                 .build();
         ComponentProperty uiProperty = new ComponentProperty(uiMeta, property.getValue());
         uiProperty.setOverwriteEnabled(property.isOverwriteEnabled());
@@ -1517,11 +1584,28 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
      * Validates the values populated
      * @return a populated ValidationInfo array if there are any validation issues.
      */
+    static List<ValidationInfo> validateModulePorts(Map<String, ComponentPropertyEditRow> rows) {
+        List<ValidationInfo> result = new ArrayList<>();
+        var ports = new java.util.HashSet<Integer>();
+        for (String key : List.of(ComponentPropertyMeta.APPLICATION_PORT_NUMBER_NAME,
+                ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME, ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME)) {
+            var row = rows.get(key);
+            if (row == null) continue;
+            String value = Objects.toString(row.getValue(), "");
+            if (value.isBlank()) continue; // Mandatory row validation supplies the missing-value message.
+            if (!value.matches("[0-9]{1,5}") || Integer.parseInt(value) < 1 || Integer.parseInt(value) > 65535)
+                result.add(new ValidationInfo(StudioBundle.message("modulePorts.invalid", key), row.getOverridingInputField()));
+            else if (!ports.add(Integer.parseInt(value))) result.add(new ValidationInfo(StudioBundle.message("modulePorts.duplicate", key), row.getOverridingInputField()));
+        }
+        return result;
+    }
+
     protected java.util.List<ValidationInfo> doValidateAll() {
         List<ValidationInfo> result = new ArrayList<>();
         for (final ComponentPropertyEditRow editPair: getComponentPropertyEditBoxList()) {
             result.addAll(editPair.doValidateAll());
         }
+        if (getSelectedComponent() instanceof Module) result.addAll(validateModulePorts(componentPropertyEditBoxMap));
         if (getSelectedComponent() != null) result.addAll(ConversionRecipeEditor.validate(
                 getSelectedComponent().getComponentMeta().getConversionRecipes(), componentPropertyEditBoxMap));
         if (getSelectedComponent() instanceof FlowElement router && router.getComponentMeta().isRouter()

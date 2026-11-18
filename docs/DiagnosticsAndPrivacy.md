@@ -47,6 +47,12 @@ See [JetBrains Exception Analyzer](https://plugins.jetbrains.com/docs/marketplac
 
 Use the [bug report form](https://github.com/RealisticSolutions/IkasanStudio/issues/new?template=bug_report.yml) with your Studio version, IntelliJ IDEA version/edition and build, operating system, selected Ikasan version and reproduction steps. Describe expected and actual behaviour. If setup failed before selecting a version, say so. Attach only reviewed, sanitised diagnostics; report vulnerabilities through [SECURITY.md](../SECURITY.md).
 
+## Screenshot-friendly import reports
+
+For running-module import investigations, use [import diagnostic reports](RuntimeImportDiagnostics.md).
+These provide numbered summary/detail pages without requiring the original JSON or the diagnostics ZIP.
+The latest attempt is project-scoped and memory-only; no automatic upload or model attachment occurs.
+
 ## Collecting diagnostics
 
 Use **Tools → Ikasan Studio → Collect Ikasan Studio Diagnostics…**, or search for the same action in IntelliJ Find Action. It remains available during indexing and does not require the designer tab to be open. Choose a local `.zip` destination; collection runs in the background. Nothing is uploaded or sent to another application.
@@ -104,9 +110,22 @@ Warning/error notification helpers record a safe event instead of copying their 
 
 These changes do not erase existing IDE logs, and the plugin cannot control logging performed by the generated application, dependencies or other installed plugins. The collector's strict export boundary protects the bundle from older free-text logs; it does not certify the entire IDE log as credential-free.
 
+## Running-module import request tracing
+
+For troubleshooting an explicitly requested running-module fetch, local `idea.log` records the
+actual REST GET endpoint, metadata/configuration stage and HTTP result. These operational
+messages expose the application host/context and encoded module/flow names, so the URL and
+case-sensitive lookup can be checked. They omit URL user-info, queries/fragments, authentication
+headers, passwords and response bodies. Recognized Swagger UI suffixes and their query/fragment
+are removed before requests and tracing. Other credential-bearing or query/fragment URLs are rejected.
+
+These are local operational messages, not `STUDIO-DIAG` events. The strict diagnostics collector
+does not include them in its ZIP. Review the original IDE log before sharing it separately.
+See [runtime JSON import](IkasanRuntimeJson.md#fetch-from-a-running-module).
+
 ## Maintenance and verification
 
-Never log maps, model `toString()` output, entered property values, payloads, tokens, connection URLs or raw exception messages in new diagnostic events. Add a fixed enum event when a new operation needs diagnosis; include only the narrow context needed. Keep English and Japanese action/message resources synchronized. Re-run privacy tests whenever changing the export grammar or archive entries.
+Never log maps, model `toString()` output, entered property values, payloads, tokens, connection URLs or raw exception messages in new structured diagnostic events. The bounded operational request tracing described above is separate from the export grammar. Add a fixed enum event when a new operation needs diagnosis; include only the narrow context needed. Keep English and Japanese action/message resources synchronized. Re-run privacy tests whenever changing the export grammar or archive entries.
 
 ```sh
 ./gradlew test --tests '*StudioDiagnosticBundleTest' --tests '*CollectStudioDiagnosticsActionHeavyTest' --tests '*GeneratorFailureInjectionTest' --tests '*StudioBuildUtilsTest'

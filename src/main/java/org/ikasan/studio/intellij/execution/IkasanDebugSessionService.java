@@ -260,21 +260,9 @@ public final class IkasanDebugSessionService implements Disposable {
         if (!DefaultDebugExecutor.EXECUTOR_ID.equals(executorId) || environment == null) {
             return false;
         }
-        RunnerAndConfigurationSettings settings = environment.getRunnerAndConfigurationSettings();
-        return isStudioDebugConfiguration(settings);
-    }
-
-    private static boolean isStudioDebugConfiguration(RunnerAndConfigurationSettings settings) {
-        return settings != null && isStudioDebugConfiguration(settings.getConfiguration());
-    }
-
-    private static boolean isStudioDebugConfiguration(RunProfile runProfile) {
-        if (!isStudioModuleConfiguration(runProfile)) {
-            return false;
-        }
-        ApplicationConfiguration configuration = (ApplicationConfiguration) runProfile;
-        return IkasanRunConfigurationService.STUDIO_DEBUG_PROGRAM_PARAMETERS
-                .equals(configuration.getProgramParameters());
+        // The executor identifies the launch mode. Program arguments can include additional
+        // profiles and harness overrides, or come from an edited Application configuration.
+        return isStudioModuleExecution(environment);
     }
 
     private static boolean isStudioModuleConfiguration(RunProfile runProfile) {
@@ -294,7 +282,7 @@ public final class IkasanDebugSessionService implements Disposable {
     private void registerAlreadyRunningDebugProcesses() {
         boolean debugAlreadyRunning = false;
         for (XDebugSession session : XDebuggerManager.getInstance(project).getDebugSessions()) {
-            if (isStudioDebugConfiguration(session.getRunProfile())) {
+            if (isStudioModuleConfiguration(session.getRunProfile())) {
                 ProcessHandler handler = session.getDebugProcess().getProcessHandler();
                 if (!handler.isProcessTerminated()) {
                     moduleProcesses.add(handler);

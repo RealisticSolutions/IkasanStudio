@@ -184,7 +184,7 @@ public class TestFixtures {
 
         flowElement.setPropertyValue("ignoreMisfire",  true);
         flowElement.setPropertyValue("isRecursive", true);
-        flowElement.setPropertyValue("knownHostFilename", "~/.ssh/known_hosts");
+        flowElement.setPropertyValue("knownHostsFilename", "~/.ssh/known_hosts");
         flowElement.setPropertyValue("managedEventIdentifierService", "myManagedEventIdentifierServiceClass");
         flowElement.setPropertyValue("maxEagerCallbacks", 1);
         flowElement.setPropertyValue("maxRetryAttempts", 10);
@@ -268,7 +268,7 @@ public class TestFixtures {
         flowElement.setPropertyValue("configuration", "MyConfigurationClass");
         flowElement.setPropertyValue("configurationId", "__module__flow__component");
         flowElement.setPropertyValue("connectionFactory", "myConnectionFactory");
-        flowElement.setPropertyValue("connectionFactoryJndiProperties", "key1value1key2value2");
+        flowElement.setPropertyValue("connectionFactoryJndiProperties", new java.util.TreeMap<>(java.util.Map.of("key1", "value1", "key2", "value2")));
         flowElement.setPropertyValue("connectionFactoryJndiPropertyFactoryInitial", "myConnectionFactoryJndiPropertyFactoryInitial");
         flowElement.setPropertyValue("connectionFactoryJndiPropertyProviderUrl", "myConnectionFactoryJndiPropertyProviderUrl");
         flowElement.setPropertyValue("connectionFactoryJndiPropertySecurityCredentials", "myConnectionFactoryJndiPropertySecurityCredentials");
@@ -280,7 +280,7 @@ public class TestFixtures {
         flowElement.setPropertyValue("connectionPassword", "myConnectionPassword");
         flowElement.setPropertyValue("connectionUsername", "myConnectionUsername");
         flowElement.setPropertyValue("destinationJndiName", "myDestinationJndiName");
-        flowElement.setPropertyValue("destinationJndiProperties", "myDestinationJndiProperties");
+        flowElement.setPropertyValue("destinationJndiProperties", java.util.Map.of("java.naming.provider.url", "tcp://localhost:61616"));
         flowElement.setPropertyValue("destinationJndiPropertyFactoryInitial", "myDestinationJndiPropertyFactoryInitial");
         flowElement.setPropertyValue("destinationJndiPropertyProviderUrl", "myDestinationJndiPropertyProviderUrl");
         flowElement.setPropertyValue("destinationJndiPropertySecurityCredentials", "myDestinationJndiPropertySecurityCredentials");
@@ -630,9 +630,9 @@ public class TestFixtures {
         flowElement.setPropertyValue("criticalOnStartup", true);
         flowElement.setPropertyValue("emailBody", "myEmailBody");
         flowElement.setPropertyValue("emailFormat", "html");
-        flowElement.setPropertyValue("extendedMailSessionProperties", java.util.Map.of("key1", "value1", "key2", "value2"));
+        flowElement.setPropertyValue("extendedMailSessionProperties", new java.util.TreeMap<>(java.util.Map.of("key1", "value1", "key2", "value2")));
         flowElement.setPropertyValue("from", "FromAddress");
-        flowElement.setPropertyValue("hasAttachments", true);
+        flowElement.setPropertyValue("hasAttachment", true);
         flowElement.setPropertyValue("mailDebug", true);
         flowElement.setPropertyValue("mailMimeAddressStrict", true);
         flowElement.setPropertyValue("mailPassword", "myMailPassword");
@@ -703,7 +703,7 @@ public class TestFixtures {
         flowElement.setPropertyValue("configuration", "MyConfigurationClass");
         flowElement.setPropertyValue("configuredResourceId", "__module.__flow.__component");
         flowElement.setPropertyValue("connectionFactory", "myConnectionFactory");
-        flowElement.setPropertyValue("connectionFactoryJndiProperties", "key1value1key2value2");
+        flowElement.setPropertyValue("connectionFactoryJndiProperties", new java.util.TreeMap<>(java.util.Map.of("key1", "value1", "key2", "value2")));
         flowElement.setPropertyValue("connectionFactoryJndiPropertyFactoryInitial", "myConnectionFactoryJndiPropertyFactoryInitial");
         flowElement.setPropertyValue("connectionFactoryJndiPropertyProviderUrl", "myConnectionFactoryJndiPropertyProviderUrl");
         flowElement.setPropertyValue("connectionFactoryJndiPropertySecurityCredentials", "myConnectionFactoryJndiPropertySecurityCredentials");
@@ -717,7 +717,7 @@ public class TestFixtures {
         flowElement.setPropertyValue("deliveryMode", 1);
         flowElement.setPropertyValue("deliveryPersistent", true);
         flowElement.setPropertyValue("destinationJndiName", "myDestinationJndiName");
-        flowElement.setPropertyValue("destinationJndiProperties", "myDestinationJndiProperties");
+        flowElement.setPropertyValue("destinationJndiProperties", java.util.Map.of("java.naming.provider.url", "tcp://localhost:61616"));
         flowElement.setPropertyValue("destinationJndiPropertyFactoryInitial", "myDestinationJndiPropertyFactoryInitial");
         flowElement.setPropertyValue("destinationJndiPropertyProviderUrl", "myDestinationJndiPropertyProviderUrl");
         flowElement.setPropertyValue("destinationJndiPropertySecurityCredentials", "myDestinationJndiPropertySecurityCredentials");
@@ -749,14 +749,14 @@ public class TestFixtures {
             .build();
 
         flowElement.setPropertyValue("checksumDelivered", true);
-        flowElement.setPropertyValue("cleanupChunks", true);
+        flowElement.setPropertyValue("cleanUpChunks", true);
         flowElement.setPropertyValue("cleanupJournalOnComplete", true);
         flowElement.setPropertyValue("clientID", "myClientId");
         flowElement.setPropertyValue("configuration", "MyConfigurationClass");
         flowElement.setPropertyValue("configurationId", "myUniqueConfiguredResourceIdName");
         flowElement.setPropertyValue("createParentDirectory", true);
         flowElement.setPropertyValue("criticalOnStartup", true);
-        flowElement.setPropertyValue("knownHostFilename", "~/.ssh/knownhosts");
+        flowElement.setPropertyValue("knownHostsFilename", "~/.ssh/knownhosts");
         flowElement.setPropertyValue("maxRetryAttempts", 10);
         flowElement.setPropertyValue("outputDirectory", "/tmp/output");
         flowElement.setPropertyValue("password", "secret");

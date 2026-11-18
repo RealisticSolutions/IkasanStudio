@@ -4,12 +4,17 @@ import org.ikasan.studio.flowtests.support.FlowTestSupportFingerprint;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.ikasan.studio.flowtests.support.utils.LocalSftpTestServer;
+import org.ikasan.studio.flowtests.support.utils.FlowTestFailureCapture;
+import org.ikasan.studio.flowtests.support.utils.FlowTestBatch;
+import org.ikasan.studio.flowtests.support.utils.FlowTestFailureDiagnostics;
 import org.ikasan.studio.flowtests.support.utils.LocalFtpTestServer;
 import org.ikasan.studio.flowtests.support.utils.FileDeliveryAssertions;
 import org.ikasan.studio.flowtests.support.utils.FileDeliveryBatchAssertions;
 import org.ikasan.studio.flowtests.support.utils.OutputTextSupport;
 import org.ikasan.studio.flowtests.support.utils.LocalSmtpTestServer;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.ikasan.studio.flowtests.support.utils.ScheduledEventFixture;
+
 import java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
@@ -58,6 +63,7 @@ import static org.junit.Assert.fail;
 /** Developer-owned shared setup. Each call creates a NEW application, never a cached/static context. */
 public abstract class ModuleFlowTestSupport {
     private volatile RuntimeException outputTextFailure;
+    private FlowTestFailureCapture processingFailures;
     private int deliveryTimeoutSeconds = 10;
     private final TemporaryFolder ftpTestDirectory = TemporaryFolder.builder().assureDeletion().build();
 
@@ -97,7 +103,8 @@ public abstract class ModuleFlowTestSupport {
         Map<String, String> properties = moduleTestProperties();
         int seconds = deliveryTimeoutSeconds(properties.getOrDefault("test.delivery.timeout-seconds", "10"));
         // JUnit removes files after the test/context cleanup, and reports deletion failures.
-        return RuleChain.outerRule(ftpTestDirectory).around(Timeout.seconds(60L + 10L * seconds));
+        return RuleChain.outerRule(ftpTestDirectory).around(Timeout.seconds(deliveryTimeoutSeconds(properties.getOrDefault("test.scenario.timeout-seconds",
+                String.valueOf(60L + 10L * seconds)))));
     }
     /**
      * Reloads shared test settings from the UTF-8 properties file into a fresh map.
@@ -341,14 +348,76 @@ public abstract class ModuleFlowTestSupport {
      */
     protected void cleanupFixtures(ConfigurableApplicationContext context) throws Exception { }
 
-    /** Fresh context per scenario, closed even if setup, delivery or assertions fail. */
+    /**
+     * Compatibility for older developer-owned tests that explicitly opted into a review guard.
+     * New tests use the overload without a boolean; remove the flag argument to adopt that behaviour.
+     */
+    @Deprecated
     protected final void runTest(boolean configured, TestScenario scenario) throws Exception {
+        assertTrue("This legacy test has not been marked reviewed. Set its flag to true or remove the boolean argument.", configured);
+        runTest(scenario);
+    }
+
+    /**
+     * Compatibility for older developer-owned tests that explicitly opted into a review guard.
+     * New tests use the overload without a boolean; remove the flag argument to adopt that behaviour.
+     */
+    @Deprecated
+    protected final void runTest(boolean configured, String output) throws Exception {
+        assertTrue("This legacy test has not been marked reviewed. Set its flag to true or remove the boolean argument.", configured);
+        runTest(output);
+    }
+
+    /**
+     * Compatibility for older developer-owned tests that explicitly opted into a review guard.
+     * New tests use the overload without a boolean; remove the flag argument to adopt that behaviour.
+     */
+    @Deprecated
+    protected final void runTest(boolean configured, String output, String firstExpected, String secondExpected) throws Exception {
+        assertTrue("This legacy test has not been marked reviewed. Set its flag to true or remove the boolean argument.", configured);
+        runTest(output, firstExpected, secondExpected);
+    }
+
+    /**
+     * Compatibility for older developer-owned tests that explicitly opted into a review guard.
+     * New tests use the overload without a boolean; remove the flag argument to adopt that behaviour.
+     */
+    @Deprecated
+    protected final void runTest(boolean configured, String output, ContextBatchInput input, String firstExpected, String secondExpected) throws Exception {
+        assertTrue("This legacy test has not been marked reviewed. Set its flag to true or remove the boolean argument.", configured);
+        runTest(output, input, firstExpected, secondExpected);
+    }
+
+    /**
+     * Compatibility for older developer-owned tests that explicitly opted into a review guard.
+     * New tests use the overload without a boolean; remove the flag argument to adopt that behaviour.
+     */
+    @Deprecated
+    protected final void runObservationTest(boolean configured, String producerName) throws Exception {
+        assertTrue("This legacy test has not been marked reviewed. Set its flag to true or remove the boolean argument.", configured);
+        runObservationTest(producerName);
+    }
+
+    /**
+     * Compatibility for older developer-owned tests that explicitly opted into a review guard.
+     * New tests use the overload without a boolean; remove the flag argument to adopt that behaviour.
+     */
+    @Deprecated
+    protected final void runObservationTest(boolean configured, String producerName, List<String> expectedPayloadValues) throws Exception {
+        assertTrue("This legacy test has not been marked reviewed. Set its flag to true or remove the boolean argument.", configured);
+        runObservationTest(producerName, expectedPayloadValues);
+    }
+
+    /** Fresh context per scenario, closed even if setup, delivery or assertions fail. */
+    protected final void runTest(TestScenario scenario) throws Exception {
         fileDeliveryBatches.reset();
-        assertTrue("Complete TODO 1–4, then set TEST_REVIEWED=true in TODO 5. See user-flow-tests/README.md", configured);
         try (ConfigurableApplicationContext context = openTestApplication(flowTestProperties());
              AutoCloseable fixtures = () -> cleanupFixtures(context)) {
             prepareFixtures(context);
             scenario.run(context);
+        } catch (AssertionError | Exception failure) {
+            throw FlowTestFailureDiagnostics.contextualise(failure.getMessage() == null
+                    ? failure.getClass().getName() : failure.getMessage(), failure, getClass());
         }
     }
 
@@ -397,46 +466,282 @@ public abstract class ModuleFlowTestSupport {
      * Calls verifyReceivedOutput after each assertion, with null expected text in this mode.
      * Keeps the same running flow for both batches and checks idle readiness between them.
      */
-    protected final void runTest(boolean configured, String output) throws Exception {
-        runOutputTest(configured, output, this::supplyInput, null, true);
+    protected final void runTest(String output) throws Exception {
+        runOutputTest(output, this::supplyInput, null, true);
     }
 
     /** Runs the standard two-batch scenario; default assertOutput compares the expected text. */
-    protected final void runTest(boolean configured, String output,
+    protected final void runTest(String output,
                                  String firstExpected, String secondExpected) throws Exception {
-        runOutputTest(configured, output, this::supplyInput,
+        runOutputTest(output, this::supplyInput,
                 new String[]{firstExpected, secondExpected}, true);
     }
 
     /** Standard two-batch scenario with an explicit input callback and output assertion hook. */
-    protected final void runTest(boolean configured, String output, ContextBatchInput input,
+    protected final void runTest(String output, ContextBatchInput input,
                                  String firstExpected, String secondExpected) throws Exception {
-        runOutputTest(configured, output, input, new String[]{firstExpected, secondExpected}, false);
+        runOutputTest(output, input, new String[]{firstExpected, secondExpected}, false);
     }
 
     /** Coordinates raw observations and assertions without converting business objects to strings. */
-    private void runOutputTest(boolean configured, String output, ContextBatchInput input,
+    private void runOutputTest(String output, ContextBatchInput input,
                                String[] expected, boolean checkReceiver) throws Exception {
         expectedTextOutputs = expected;
+        // Legacy runTest overloads explicitly submit two inputs. Collection-based tests derive their count.
+        batchInputCount = 2;
         try {
-            runTest(configured, context -> observeScenario(context, getFlowName(), output,
+            runTest(context -> observeScenario(context, getFlowName(), output,
                     PayloadObservation::new, this::defineExpectedPath, (harness, flow, outputs) -> {
                 for (int batch = 1; batch <= 2; batch++) {
                     input.send(context, harness, batch);
-                    PayloadObservation observation = outputs.poll(deliveryTimeoutSeconds, TimeUnit.SECONDS);
+                    PayloadObservation observation = processingFailures.poll(outputs, deliveryTimeoutSeconds);
                     assertNotNull("No output observed after producer '" + output + "' in flow '" + getFlowName()
                             + "' for batch " + batch + " within " + deliveryTimeoutSeconds + " seconds. Flow state: "
                             + flow.getState() + ". Check earlier flow errors, consumer filename/minimum-age filters and endpoint connections.", observation);
                     assertOutput(observation.payload, batch);
                     if (checkReceiver) verifyReceivedOutput(context, batch, expected == null ? null : expected[batch - 1]);
                     assertEquals("Ready after delivery", Flow.RUNNING, flow.getState());
-                    assertNull("No unexpected output while idle", outputs.poll(1, TimeUnit.SECONDS));
+                    assertNull("No unexpected output while idle", processingFailures.poll(outputs, 1));
                     assertEquals("Ready while idle", Flow.RUNNING, flow.getState());
                 }
             }));
         } finally {
             expectedTextOutputs = null;
+            batchInputCount = 0;
         }
+    }
+
+    /** Checks this batch's text file contents, retaining prior successful delivery expectations internally. */
+    protected final void assertDeliveredBatchContents(Path directory, String glob, int batch, String... expected) throws Exception {
+        fileDeliveryBatches.assertBatch(directory, glob, batch, Arrays.asList(expected), Duration.ofSeconds(deliveryTimeoutSeconds));
+    }
+
+    /** Receiver check for the whole batch, including zero or multiple deliveries. */
+    protected void verifyReceivedOutput(ConfigurableApplicationContext context, int batch,
+            List<String> expected) throws Exception {
+        throw new UnsupportedOperationException("Override verifyReceivedOutput(context, batch, List<String>) to check receiver deliveries");
+    }
+
+    /** Inputs are values, not batch numbers. Each batch is sent on the same running flow. */
+    @FunctionalInterface
+    protected interface InputSender<I> {
+        void send(ConfigurableApplicationContext context, IkasanFlowTestRule harness, I input) throws Exception;
+    }
+    @FunctionalInterface
+    protected interface BatchFactory<I> {
+        List<FlowTestBatch<I>> create(ConfigurableApplicationContext context) throws Exception;
+    }
+    @FunctionalInterface
+    protected interface BatchDeliveryCheck<I> {
+        void verify(ConfigurableApplicationContext context, int batchNumber, FlowTestBatch<I> batch) throws Exception;
+    }
+    protected static <I> FlowTestBatch<I> batch(List<I> inputs, Map<String, ? extends List<?>> outputs) {
+        return new FlowTestBatch<>(inputs, outputs);
+    }
+    /** Strings use the text adapter; business objects must implement equals (and matching hashCode). */
+    protected void assertExpectedOutput(Object expected, Object actualAfterProducer) {
+        if (expected instanceof String) assertEquals(expected, formatOutputText(actualAfterProducer));
+        else assertEquals("Producer payload differs; review expected values in createInputOutputBatches", expected, actualAfterProducer);
+    }
+    /** Compatibility for existing tests; new batches contain expected values directly. */
+    @Deprecated
+    protected final FlowTestBatch.OutputCheck textOutput(String expected) {
+        return new FlowTestBatch.OutputCheck() {
+            public void verify(Object actual) { assertEquals(expected, formatOutputText(actual)); }
+            public String expectedText() { return expected; }
+        };
+    }
+    /** One timer event without a business input. Empty ordinary batches only observe. */
+    protected static <I> FlowTestBatch<I> triggeredBatch(Map<String, ? extends List<?>> outputs) {
+        return FlowTestBatch.triggered(outputs);
+    }
+    protected void triggerBatch(ConfigurableApplicationContext context, IkasanFlowTestRule harness) throws Exception {
+        JsonNode definition = testWiring().path("testFlows").path(getFlowName());
+        if (!"scheduled-context".equals(definition.path("inputMode").asText()))
+            throw new IllegalArgumentException("triggeredBatch requires a scheduled-context consumer; override triggerBatch for a custom provider");
+        ScheduledEventFixture.fire(harness, definition.path("consumer").asText());
+    }
+
+    private IkasanFlowTestRule testHarness(Flow observedFlow) throws IOException {
+        java.util.Set<String> debugComponents = new java.util.HashSet<>();
+        for (JsonNode name : testWiring().path("testFlows").path(getFlowName()).path("debugComponents"))
+            debugComponents.add(name.asText());
+        var pathListener = new org.ikasan.testharness.flow.listener.FlowEventListenerSubject(
+                org.ikasan.flow.event.DefaultReplicationFactory.getInstance()) {
+            @Override public void beforeFlowElement(String module, String name, FlowElement element, FlowEvent event) {
+                if (!debugComponents.contains(element.getComponentName())) super.beforeFlowElement(module, name, element, event);
+            }
+            @Override public void afterFlowElement(String module, String name, FlowElement element, FlowEvent event) {
+                if (!debugComponents.contains(element.getComponentName())) super.afterFlowElement(module, name, element, event);
+            }
+        };
+        // The listener overload casts the raw component, unlike startFlow(), which unwraps Spring proxies.
+        // Suppress scheduling ourselves through getComponent(), then bypass that unsafe cast.
+        return new IkasanFlowTestRule(true) {
+            private String timerConsumer;
+            private void validatePathComponent(String name, String role, Class<?> expectedType) {
+                var element = observedFlow.getFlowElement(name);
+                if (element == null) {
+                    String suggestion = "";
+                    for (Object candidate : observedFlow.getFlowElements()) {
+                        String candidateName = ((FlowElement) candidate).getComponentName();
+                        if (candidateName.replaceAll("\\s", "").equalsIgnoreCase(name == null ? "" : name.replaceAll("\\s", ""))) {
+                            suggestion = " Did you mean '" + candidateName + "'?";
+                            break;
+                        }
+                    }
+                    throw new AssertionError("Flow '" + getFlowName() + "': contains a component named '" + name
+                            + "' which does not exist." + suggestion + " Update defineExpectedPath; use the exact component name from the canvas.");
+                }
+                Object component = getComponent(name); // The harness unwraps Spring proxies.
+                if (!expectedType.isInstance(component)) {
+                    throw new AssertionError("Flow '" + getFlowName() + "': expected path uses " + role + "('" + name
+                            + "'), but the component does not implement " + expectedType.getSimpleName()
+                            + ". Update defineExpectedPath to use the correct component role.");
+                }
+            }
+            @Override public IkasanFlowTestRule producer(String name) {
+                validatePathComponent(name, "producer", org.ikasan.spec.component.endpoint.Producer.class);
+                return super.producer(name);
+            }
+            @Override public IkasanFlowTestRule splitter(String name) {
+                validatePathComponent(name, "splitter", org.ikasan.spec.component.splitting.Splitter.class);
+                return super.splitter(name);
+            }
+            @Override public IkasanFlowTestRule converter(String name) {
+                validatePathComponent(name, "converter", org.ikasan.spec.component.transformation.Converter.class);
+                return super.converter(name);
+            }
+            @Override public IkasanFlowTestRule router(String name) {
+                validatePathComponent(name, "router", org.ikasan.spec.component.routing.SingleRecipientRouter.class);
+                return super.router(name);
+            }
+            @Override public IkasanFlowTestRule multiRecipientRouter(String name) {
+                validatePathComponent(name, "multiRecipientRouter", org.ikasan.spec.component.routing.MultiRecipientRouter.class);
+                return super.multiRecipientRouter(name);
+            }
+            @Override public IkasanFlowTestRule translator(String name) {
+                validatePathComponent(name, "translator", org.ikasan.spec.component.transformation.Translator.class);
+                return super.translator(name);
+            }
+            @Override public IkasanFlowTestRule broker(String name) {
+                validatePathComponent(name, "broker", org.ikasan.spec.component.endpoint.Broker.class);
+                return super.broker(name);
+            }
+            @Override public IkasanFlowTestRule sequencer(String name) {
+                validatePathComponent(name, "sequencer", org.ikasan.spec.component.sequencing.Sequencer.class);
+                return super.sequencer(name);
+            }
+
+            @Override public IkasanFlowTestRule scheduledConsumer(String name) {
+                validatePathComponent(name, "scheduledConsumer", org.ikasan.component.endpoint.quartz.consumer.ScheduledConsumer.class);
+                timerConsumer = name;
+                return super.scheduledConsumer(name);
+            }
+            @Override public IkasanFlowTestRule consumer(String name) {
+                validatePathComponent(name, "consumer", org.ikasan.spec.component.endpoint.Consumer.class);
+                if (getComponent(name) instanceof org.ikasan.component.endpoint.quartz.consumer.ScheduledConsumer)
+                    timerConsumer = name;
+                return super.consumer(name);
+            }
+            @Override public IkasanFlowTestRule filter(String name) {
+                validatePathComponent(name, "filter", org.ikasan.spec.component.filter.Filter.class);
+                return debugComponents.contains(name) ? this : super.filter(name);
+            }
+            @Override public void startFlow() {
+                if (timerConsumer != null) {
+                    var consumer = (org.ikasan.component.endpoint.quartz.consumer.ScheduledConsumer) getComponent(timerConsumer);
+                    consumer.getConfiguration().setCronExpression("0/5 * * * * ? 2099");
+                    consumer.getConfiguration().setEager(false);
+                }
+                observedFlow.addFlowListener(pathListener);
+                try { super.startFlow(pathListener); }
+                catch (RuntimeException | Error failure) { observedFlow.removeFlowListener(pathListener); throw failure; }
+            }
+            @Override public void stopFlow() {
+                try { super.stopFlow(); } finally { observedFlow.removeFlowListener(pathListener); }
+            }
+        }.withFlow(observedFlow);
+    }
+
+    // Populated before defineExpectedPath; zero before a scenario is configured.
+    private int batchInputCount = 0;
+    /** Total input submissions and explicit timer triggers for a simple one-path-per-invocation expectation; routers/splitters need custom paths. */
+    protected final int expectedInputCount() { return batchInputCount; }
+
+    protected final <I> void runBatches(List<FlowTestBatch<I>> batches, InputSender<I> sender) throws Exception {
+        runBatches(context -> batches, sender, (context, number, batch) -> { });
+    }
+    protected final <I> void runBatches(BatchFactory<I> factory, InputSender<I> sender) throws Exception {
+        runBatches(factory, sender, (context, number, batch) -> { });
+    }
+    /** Factory runs after prepareFixtures; useful when inputs need Spring beans or temporary services. */
+    protected final <I> void runBatches(BatchFactory<I> factory, InputSender<I> sender,
+            BatchDeliveryCheck<I> receiverCheck) throws Exception {
+        runTest(context -> {
+            List<FlowTestBatch<I>> batches = List.copyOf(factory.create(context));
+            if (batches.isEmpty()) throw new IllegalArgumentException("Define at least one batch");
+            batchInputCount = batches.stream().mapToInt(FlowTestBatch::invocationCount).sum();
+            Module<Flow> module = context.getBean(Module.class);
+            Flow flow = module.getFlow(getFlowName());
+            assertNotNull("Flow must exist: " + getFlowName(), flow);
+            for (FlowTestBatch<I> batch : batches) {
+                for (String producer : batch.producers()) {
+                    var element = flow.getFlowElement(producer);
+                    assertNotNull("Unknown producer '" + producer + "' in flow '" + getFlowName() + "'", element);
+                    assertTrue("Expected a producer: " + producer,
+                            element.getFlowComponent() instanceof org.ikasan.spec.component.endpoint.Producer);
+                }
+            }
+            java.util.concurrent.atomic.AtomicReference<FlowTestBatch<I>.Observation> active =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            FlowEventListener listener = new FlowEventListener() {
+                public void beforeFlowElement(String m, String f, FlowElement e, FlowEvent event) { }
+                public void afterFlowElement(String m, String f, FlowElement e, FlowEvent event) {
+                    var observation = active.get();
+                    if (observation != null) observation.accept(e.getComponentName(), event.getPayload());
+                }
+            };
+            var harness = testHarness(flow);
+            defineExpectedPath(harness);
+            deliveryTimeoutSeconds = deliveryTimeoutSeconds(context.getEnvironment()
+                    .getProperty("test.delivery.timeout-seconds", "10"));
+            flow.addFlowListener(listener);
+            try (FlowTestFailureCapture failures = new FlowTestFailureCapture(flow, getFlowName());
+                 AutoCloseable cleanup = flowCleanup(flow, listener, harness::stopFlow)) {
+                processingFailures = failures;
+                active.set(batches.get(0).observe(this::assertExpectedOutput));
+                harness.startFlow();
+                for (int index = 0; index < batches.size(); index++) {
+                    var batch = batches.get(index);
+                    if (index > 0) active.set(batch.observe(this::assertExpectedOutput));
+                    try {
+                        if (batch.isTriggered()) { failures.check(); triggerBatch(context, harness); }
+                        for (I input : batch.inputs()) { failures.check(); sender.send(context, harness, input); }
+                        active.get().verify(Duration.ofSeconds(deliveryTimeoutSeconds), Duration.ofSeconds(1), () -> {
+                            failures.check();
+                            assertEquals("Flow must remain ready between deliveries", Flow.RUNNING, flow.getState());
+                        });
+                        receiverCheck.verify(context, index + 1, batch);
+                        active.get().assertNoPending();
+                        failures.check();
+                    } catch (AssertionError | Exception failure) {
+                        throw FlowTestFailureDiagnostics.contextualise("Flow '" + getFlowName() + "', batch " + (index + 1)
+                                + " of " + batches.size() + " failed: " + failure.getMessage(), failure, getClass());
+                    }
+                }
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(deliveryTimeoutSeconds);
+                while (true) {
+                    failures.check();
+                    try { harness.assertIsSatisfied(); break; }
+                    catch (AssertionError pending) {
+                        if (System.nanoTime() >= deadline) throw pending;
+                        Thread.sleep(20);
+                    }
+                }
+                assertEquals("Ready after all batches", Flow.RUNNING, flow.getState());
+            } finally { processingFailures = null; batchInputCount = 0; }
+        });
     }
 
     /** Wraps nullable payloads so a null value remains distinguishable from a missing event. */
@@ -564,9 +869,9 @@ public abstract class ModuleFlowTestSupport {
         }
     }
 
-    /** Compatibility overload for observation tests generated without payload expectations. */
-    protected final void runObservationTest(boolean configured, String producerName) throws Exception {
-        runObservationTest(configured, producerName, List.of());
+    /** Observation scenario without initial payload-value expectations. */
+    protected final void runObservationTest(String producerName) throws Exception {
+        runObservationTest(producerName, List.of());
     }
 
     /**
@@ -583,15 +888,13 @@ public abstract class ModuleFlowTestSupport {
      * External delivery, intermediate component order and recovery behaviour are not asserted.
      * Retains only the expected initial samples; subsequent events are counted without storing payloads.
      * Removes the listener and closes the application context during cleanup.
-     * @param configured whether the developer has reviewed and enabled this scenario
      * @param producerName name of the producer observed through afterFlowElement
      * @param expectedPayloadValues expected initial payload values in order, compared using formatOutputText;
      *                              an empty list skips payload-value assertions
      */
-    protected final void runObservationTest(boolean configured, String producerName,
+    protected final void runObservationTest(String producerName,
             List<String> expectedPayloadValues) throws Exception {
         List<String> expected = List.copyOf(expectedPayloadValues);
-        assertTrue("Review TODO 1–2, then set TEST_REVIEWED=true", configured);
         try (ConfigurableApplicationContext context = openTestApplication(flowTestProperties());
              AutoCloseable fixtures = () -> cleanupFixtures(context)) {
             prepareFixtures(context);
@@ -612,10 +915,12 @@ public abstract class ModuleFlowTestSupport {
                 }
             };
             flow.addFlowListener(listener);
-            try (AutoCloseable cleanup = flowCleanup(flow, listener, () -> {
+            try (FlowTestFailureCapture failures = new FlowTestFailureCapture(flow, getFlowName());
+                 AutoCloseable cleanup = flowCleanup(flow, listener, () -> {
                 flow.stop();
                 assertEquals("Stopped during test teardown", Flow.STOPPED, flow.getState());
             })) {
+                processingFailures = failures;
                 flow.start();
                 awaitObservedEvent(flow, delivered, 0);
                 for (int index = 0; index < expected.size(); index++) {
@@ -625,6 +930,7 @@ public abstract class ModuleFlowTestSupport {
                 // Keep the SAME flow running during the observation window, then require a NEW event.
                 long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
                 while (System.nanoTime() < until) {
+                    processingFailures.check();
                     assertEquals("Continued running", Flow.RUNNING, flow.getState());
                     Thread.sleep(20);
                 }
@@ -637,8 +943,10 @@ public abstract class ModuleFlowTestSupport {
     private String awaitOutputText(BlockingQueue<String> outputs, int seconds) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
         do {
+            if (processingFailures != null) processingFailures.check();
             if (outputTextFailure != null) throw outputTextFailure;
             String output = outputs.poll(25, TimeUnit.MILLISECONDS);
+            if (processingFailures != null) processingFailures.check();
             if (outputTextFailure != null) throw outputTextFailure;
             if (output != null) return output;
         } while (System.nanoTime() < deadline);
@@ -653,6 +961,7 @@ public abstract class ModuleFlowTestSupport {
             AtomicLong delivered, long previous) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(deliveryTimeoutSeconds);
         while (delivered.get() <= previous) {
+            processingFailures.check();
             assertEquals("Ready for generated events", Flow.RUNNING, flow.getState());
             if (System.nanoTime() >= deadline) fail("No new event reached the selected producer within " + deliveryTimeoutSeconds + " seconds");
             Thread.sleep(20);
@@ -747,15 +1056,18 @@ public abstract class ModuleFlowTestSupport {
                 if (output.equals(e.getComponentName())) outputs.add(describeOutput.apply(event.getPayload()));
             }
         };
-        var harness = new IkasanFlowTestRule().withFlow(flow);
+        var harness = testHarness(flow);
         expectations.accept(harness);
         flow.addFlowListener(listener);
-        try (AutoCloseable cleanup = flowCleanup(flow, listener, harness::stopFlow)) {
+        try (FlowTestFailureCapture failures = new FlowTestFailureCapture(flow, flowName);
+             AutoCloseable cleanup = flowCleanup(flow, listener, harness::stopFlow)) {
+            processingFailures = failures;
             harness.startFlow();
             scenario.verify(harness, flow, outputs);
             // A rejected/filtered event can finish asynchronously without reaching the output listener.
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(deliveryTimeoutSeconds);
             while (true) {
+                failures.check();
                 try { harness.assertIsSatisfied(); break; }
                 catch (AssertionError pending) {
                     if (System.nanoTime() >= deadline) throw pending;

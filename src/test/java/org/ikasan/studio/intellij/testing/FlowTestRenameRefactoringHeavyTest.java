@@ -66,6 +66,32 @@ public class FlowTestRenameRefactoringHeavyTest extends HeavyPlatformTestCase {
         assertNotNull(file(RESOURCES + "Original_Flow/New_Consumer/first.txt"));
     }
 
+    public void testProducerArgumentsInCurrentAndLegacyRunnerCallsFollowRename() {
+        write(TEST, text().replace("void customAssertion()", """
+                void runners() {
+                    runTest("Old Consumer", "Old Consumer", "expected");
+                    runTest(TEST_REVIEWED, "Old Consumer", "Old Consumer", "expected");
+                    runObservationTest("Old Consumer");
+                    runObservationTest(TEST_REVIEWED, "Old Consumer");
+                    batch(List.of("Old Consumer"), Map.of("Old Consumer", List.of(textOutput("Old Consumer"))));
+                    batch(List.of(), Map.ofEntries(Map.entry("Old Consumer", List.of(textOutput("Old Consumer")))));
+                    Map.of("Old Consumer", "unrelated");
+                }
+                void customAssertion()
+                """));
+        var plan = inspect(flow.getConsumer(), "New Consumer");
+        WriteCommandAction.runWriteCommandAction(myProject, () -> plan.apply(() -> {}));
+        assertTrue(text().contains("runTest(\"New Consumer\", \"Old Consumer\", \"expected\")"));
+        assertTrue(text().contains("runTest(TEST_REVIEWED, \"New Consumer\", \"Old Consumer\", \"expected\")"));
+        assertTrue(text().contains("runObservationTest(\"New Consumer\")"));
+        assertTrue(text().contains("runObservationTest(TEST_REVIEWED, \"New Consumer\")"));
+        assertTrue(text().contains("Map.of(\"New Consumer\", List.of(textOutput(\"Old Consumer\")))"));
+        assertTrue(text().contains("Map.entry(\"New Consumer\", List.of(textOutput(\"Old Consumer\")))"));
+        assertTrue(text().contains("Map.of(\"Old Consumer\", \"unrelated\")"));
+        assertTrue(text().contains("batch(List.of(\"Old Consumer\")"));
+
+    }
+
     public void testPersistenceFailureRestoresReferencesAndResources() {
         String before = text();
         var plan = inspect(null, "Renamed Flow");
@@ -94,6 +120,64 @@ public class FlowTestRenameRefactoringHeavyTest extends HeavyPlatformTestCase {
         try { inspect(null, "Renamed Flow"); fail("Expected unsaved-file guard"); }
         catch (IllegalStateException expected) { assertTrue(expected.getMessage().contains("Save")); }
         assertTrue(text().startsWith("// unsaved edit"));
+        assertNotNull(file(RESOURCES + "Original_Flow/Old_Consumer/first.txt"));
+    }
+
+    public void testPrepareSavesAffectedEditsAndLeavesUnrelatedDocumentsUnsaved() {
+        var manager = FileDocumentManager.getInstance();
+        var document = manager.getDocument(file(TEST));
+        write("unrelated.txt", "saved unrelated content");
+        var unrelated = manager.getDocument(file("unrelated.txt"));
+        assertNotNull(document);
+        assertNotNull(unrelated);
+        WriteCommandAction.runWriteCommandAction(myProject, () -> {
+            document.insertString(0, "// developer's unsaved change\n");
+            unrelated.insertString(0, "unsaved unrelated change\n");
+        });
+        assertTrue(manager.isDocumentUnsaved(document));
+        var plan = FlowTestRenameRefactoring.prepare(myProject, module, flow, flow.getConsumer(), "New Consumer");
+        assertFalse(manager.isDocumentUnsaved(document));
+        assertTrue(manager.isDocumentUnsaved(unrelated));
+        WriteCommandAction.runWriteCommandAction(myProject, () -> plan.apply(() -> {}));
+        assertTrue(text().startsWith("// developer's unsaved change"));
+        assertTrue(text().contains("CONSUMER_NAME = \"New Consumer\""));
+        assertTrue(text().contains("harness.consumer(\"New Consumer\")"));
+        assertTrue(text().contains("assertEquals(\"Old Consumer\", \"Old Consumer\")"));
+        assertEquals("saved unrelated content", readText("unrelated.txt"));
+        assertTrue(manager.isDocumentUnsaved(unrelated));
+    }
+
+    public void testRollbackRestoresTheDevelopersPreviouslyUnsavedEdits() {
+        var document = FileDocumentManager.getInstance().getDocument(file(TEST));
+        assertNotNull(document);
+        WriteCommandAction.runWriteCommandAction(myProject, () -> document.insertString(0, "// keep this edit\n"));
+        String before = document.getText();
+        var plan = FlowTestRenameRefactoring.prepare(myProject, module, flow, flow.getConsumer(), "New Consumer");
+        try {
+            WriteCommandAction.runWriteCommandAction(myProject, () -> plan.apply(() -> { throw new IllegalStateException("save failed"); }));
+            fail("Expected persistence failure");
+        } catch (IllegalStateException expected) { assertEquals("save failed", expected.getMessage()); }
+        assertEquals(before, document.getText());
+        assertEquals(before, text());
+        assertNotNull(file(RESOURCES + "Original_Flow/Old_Consumer/first.txt"));
+        assertNull(file(RESOURCES + "Original_Flow/New_Consumer"));
+    }
+
+    public void testReadOnlyUnsavedScenarioBlocksBeforeRename() throws Exception {
+        var testFile = file(TEST);
+        var document = FileDocumentManager.getInstance().getDocument(testFile);
+        assertNotNull(document);
+        WriteCommandAction.runWriteCommandAction(myProject, () -> document.insertString(0, "// unsaved read-only edit\n"));
+        com.intellij.openapi.application.WriteAction.run(() -> testFile.setWritable(false));
+        try {
+            FlowTestRenameRefactoring.prepare(myProject, module, flow, flow.getConsumer(), "New Consumer");
+            fail("Expected a blocked save");
+        } catch (FlowTestRenameRefactoring.RenameBlockedException expected) {
+            assertTrue(expected.getMessage().contains("rename was cancelled"));
+        } finally { com.intellij.openapi.application.WriteAction.run(() -> testFile.setWritable(true)); }
+        assertEquals("Old Consumer", flow.getConsumer().getIdentity());
+        assertTrue(document.getText().startsWith("// unsaved read-only edit"));
+        assertTrue(document.getText().contains("CONSUMER_NAME = \"Old Consumer\""));
         assertNotNull(file(RESOURCES + "Original_Flow/Old_Consumer/first.txt"));
     }
 

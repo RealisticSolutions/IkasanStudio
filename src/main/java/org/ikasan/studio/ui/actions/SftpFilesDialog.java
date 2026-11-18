@@ -49,12 +49,12 @@ public final class SftpFilesDialog extends DialogWrapper {
 
     public static void open(Project project, FlowElement component) {
         var harness = project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class);
-        if (harness.isLocal()) {
-            String remote = "/" + org.ikasan.studio.integration.sftp.LocalSftpHarness.directory(
-                    component.getContainingFlow().getIdentity(), component.getIdentity());
+        if (org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effective(project, component)) {
+            String remote = "/component-" + org.ikasan.studio.core.model.analysis.HarnessOverrides.id(component);
             ApplicationManager.getApplication().executeOnPooledThread(() -> {
                 try {
-                    var server = harness.start();
+                    // The project service owns this server and closes it on stop/disposal.
+                    @SuppressWarnings("resource") var server = harness.start();
                     java.nio.file.Files.createDirectories(server.home().resolve(remote.substring(1)));
                     var connection = server.connection();
                     ApplicationManager.getApplication().invokeLater(() -> {
@@ -241,7 +241,7 @@ public final class SftpFilesDialog extends DialogWrapper {
             host.setText(value(component, "remoteHost")); port.setText(value(component, "remotePort"));
             if (port.getText().isBlank()) port.setText("22");
             username.setText(value(component, "username")); password.setText(value(component, "password"));
-            key.setText(value(component, "privateKeyFilename")); hosts.setText(value(component, "knownHostFilename"));
+            key.setText(value(component, "privateKeyFilename")); hosts.setText(value(component, "knownHostsFilename"));
             if (hosts.getText().isBlank()) hosts.setText("~/.ssh/known_hosts");
             remote.setText(value(component, component.getComponentMeta().isConsumer() ? "sourceDirectory" : "outputDirectory"));
             setTitle(StudioBundle.message("sftpBrowser.connectTitle")); setOKButtonText(StudioBundle.message("sftpBrowser.connect")); init();

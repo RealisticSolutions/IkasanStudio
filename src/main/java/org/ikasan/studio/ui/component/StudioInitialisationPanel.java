@@ -23,9 +23,11 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
     private final JBLabel statusLabel = new JBLabel();
     private final JBTextArea detailText = new JBTextArea();
     private final LinkLabel<Object> retryLink = new LinkLabel<>(StudioBundle.message("label.Retry"), null);
+    private final LinkLabel<Object> reloadMavenLink = new LinkLabel<>(StudioBundle.message("initialisation.ReloadMaven"), null);
+    private final LinkLabel<Object> repairLink = new LinkLabel<>(StudioBundle.message("modelRepair.Link"), null);
     private final JPanel recoveryLinks = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
 
-    public StudioInitialisationPanel(Runnable retryAction, IntConsumer restoreBackupAction) {
+    public StudioInitialisationPanel(Runnable retryAction, IntConsumer restoreBackupAction, Runnable repairAction, Runnable reloadMavenAction) {
         super(new GridBagLayout());
         setBorder(JBUI.Borders.empty(24));
 
@@ -45,6 +47,10 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
 
         retryLink.setListener((source, data) -> retryAction.run(), null);
         retryLink.setVisible(false);
+        reloadMavenLink.setListener((source, data) -> reloadMavenAction.run(), null);
+        reloadMavenLink.setVisible(false);
+        repairLink.setListener((source, data) -> repairAction.run(), null);
+        repairLink.setVisible(false);
         recoveryLinks.setOpaque(false);
         recoveryLinks.setVisible(false);
         for (int index = 1; index <= 3; index++) {
@@ -95,8 +101,14 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
         add(retryLink, constraints);
 
         constraints.gridy++;
+        add(reloadMavenLink, constraints);
+
+        constraints.gridy++;
         constraints.fill = GridBagConstraints.HORIZONTAL;
         add(recoveryLinks, constraints);
+
+        constraints.gridy++;
+        add(repairLink, constraints);
 
         constraints.gridy++;
         constraints.weighty = 1;
@@ -120,15 +132,14 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
                 StudioBundle.message("message.YouCanContinueWorkingWhileIntellijPreparesTheProject"));
     }
 
-    public void showWaitingForProjectImport() {
+    public void showWaitingForProjectImport(String detail) {
         showProgress(StudioBundle.message("label.ImportingTheMavenProject"),
-                StudioBundle.message("message.IkasanStudioWillContinueAutomaticallyWhenIntellijHasImported"));
-        // Unlike the other progress states, this one waits on an external event (IntelliJ's own Maven import
-        // firing ModuleRootListener.rootsChanged) that Studio has no control over and can't time out on its
-        // own - if that import itself ever hangs, Studio would otherwise wait here forever with no way out.
-        // Retry re-runs the same check the listener would have triggered, so the user has a manual escape
-        // hatch once they've nudged the import along themselves (e.g. via the Maven tool window).
+                StudioBundle.message("message.IkasanStudioWillContinueAutomaticallyWhenIntellijHasImported")
+                        + (detail == null || detail.isBlank() ? "" : "\n\n" + detail));
+        // Maven owns the import work. Keep an explicit retry alongside Studio's automatic
+        // readiness checks so developers can recheck immediately after fixing an import problem.
         retryLink.setVisible(true);
+        reloadMavenLink.setVisible(true);
         revalidate();
         repaint();
     }
@@ -148,6 +159,8 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
         statusLabel.setText(StudioBundle.message("message.IkasanStudioCouldNotPrepareThisProject"));
         detailText.setText(detail);
         retryLink.setVisible(true);
+        repairLink.setVisible(true);
+        reloadMavenLink.setVisible(false);
         for (Component component : recoveryLinks.getComponents()) {
             int index = Integer.parseInt(component.getName().replace("restoreModelBackup", ""));
             component.setVisible(backupIndexes.contains(index));
@@ -162,6 +175,8 @@ public final class StudioInitialisationPanel extends JBPanel<StudioInitialisatio
         statusLabel.setText(status);
         detailText.setText(detail);
         retryLink.setVisible(false);
+        reloadMavenLink.setVisible(false);
+        repairLink.setVisible(false);
         recoveryLinks.setVisible(false);
         revalidate();
         repaint();

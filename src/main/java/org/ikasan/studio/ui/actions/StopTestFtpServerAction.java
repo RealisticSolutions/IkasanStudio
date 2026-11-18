@@ -20,7 +20,11 @@ public final class StopTestFtpServerAction implements ActionListener {
     private static final Logger LOG = Logger.getInstance(StopTestFtpServerAction.class);
     private final Project project;
     private final BasicElement element;
-    public StopTestFtpServerAction(Project project, BasicElement element) { this.project = project; this.element = element; }
+    private final boolean confirmed;
+    public StopTestFtpServerAction(Project project, BasicElement element) { this(project, element, false); }
+    StopTestFtpServerAction(Project project, BasicElement element, boolean confirmed) {
+        this.project = project; this.element = element; this.confirmed = confirmed;
+    }
 
     @Override public void actionPerformed(ActionEvent event) {
         if (!(element instanceof FlowElement flowElement) || !flowElement.getComponentMeta().supportsTestFtpServer()) {
@@ -32,6 +36,8 @@ public final class StopTestFtpServerAction implements ActionListener {
             StudioUIUtils.displayIdeaInfoMessage(project, StudioBundle.message("message.TestFtpServerNotRunning"));
             return;
         }
+        var endpoint = service.listeningEndpoint();
+        if (!confirmed && endpoint != null && !HarnessStopWarning.confirm(project, java.util.List.of(endpoint))) return;
         ProgressManager.getInstance().run(new Task.Backgroundable(project, "Stopping test FTP server") {
             @SuppressWarnings("NullableProblems")
             @Override public void run(ProgressIndicator indicator) {

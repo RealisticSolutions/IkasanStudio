@@ -14,6 +14,7 @@ def audit(archive, root):
     errors, resources, jars, descriptors = [], {}, [], []
     bytecode_count = 0
     offline_archives = []
+    optional_snapshots = []
     with zipfile.ZipFile(archive) as distribution:
         for name in distribution.namelist():
             if not name.endswith(".jar"):
@@ -29,6 +30,8 @@ def audit(archive, root):
                         continue
                     data = jar.read(entry)
                     resources.setdefault(entry, []).append(hashlib.sha256(data).hexdigest())
+                    if entry == "studio/development-packs/studio-pack-v5.jar":
+                        optional_snapshots.append(data)
                     if entry == "studio/offline/studio-offline-tools.zip":
                         offline_archives.append(data)
                     if entry == "META-INF/plugin.xml":
@@ -38,6 +41,9 @@ def audit(archive, root):
                         if data[:4] != b"\xca\xfe\xba\xbe" or int.from_bytes(data[6:8], "big") > 61:
                             errors.append("Studio bytecode requires newer than Java 17: " + entry)
 
+    if optional_snapshots:
+        errors.append("Retired V5 snapshot payload must not be bundled")
+
     if len(offline_archives) != 1:
         errors.append("Expected one bundled offline tools archive")
     else:
@@ -46,7 +52,8 @@ def audit(archive, root):
             for required in ("bin/studio-cli", "bin/studio-cli.bat", "bin/studio_upgrade.py", "README.md", "CommandLineMigration.md", "LICENSE.txt"):
                 if not any(name.endswith("/" + required) for name in entries):
                     errors.append("Missing offline tool: " + required)
-            for artifact in ("studio-cli-", "studio-generator-", "studio-pack-v3-", "studio-pack-v4-"):
+            required_artifacts = ["studio-cli-", "studio-generator-", "studio-pack-v3-", "studio-pack-v4-", "studio-pack-v5-release-"]
+            for artifact in required_artifacts:
                 if not any("/lib/" + artifact in name and name.endswith(".jar") for name in entries):
                     errors.append("Missing offline runtime artifact: " + artifact)
             script = next((n for n in entries if n.endswith("/bin/studio_upgrade.py")), None)
@@ -100,6 +107,13 @@ def audit(archive, root):
     expected = [path for path in source.rglob("*") if path.is_file()
                 and path.relative_to(source).as_posix() != "META-INF/plugin.xml"
                 and not (path.parent == source / "studio/metapack" and path.suffix == ".md")]
+    release_source = root / "headless/studio-pack-v5-release/src/main/resources"
+    release_expected = [path for path in release_source.rglob("*") if path.is_file()]
+    for path in release_expected:
+        if path.is_file():
+            name = path.relative_to(release_source).as_posix()
+            if hashlib.sha256(path.read_bytes()).hexdigest() not in resources.get(name, []):
+                errors.append("Missing or changed Ikasan 5.1.0 release resource: " + name)
     for path in expected:
         name = path.relative_to(source).as_posix()
         if hashlib.sha256(path.read_bytes()).hexdigest() not in resources.get(name, []):
@@ -116,11 +130,12 @@ def audit(archive, root):
     if not bytecode_count:
         errors.append("No Studio bytecode found")
     packs = sorted(name.split("/")[-2] for name in resources if name.endswith("/metapack.json"))
-    if not packs:
-        errors.append("No packaged meta-packs")
+    expected_packs = {"V3.3.9", "V4.1.6", "V5.1.0"}
+    if set(packs) != expected_packs:
+        errors.append("Unexpected packaged meta-packs: " + str(packs) + "; expected " + str(sorted(expected_packs)))
     return {"archive": str(archive), "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
             "status": "FAIL" if errors else "PASS", "errors": errors, "meta_packs": packs,
-            "source_resources_checked": len(expected), "studio_classes_checked": bytecode_count,
+            "source_resources_checked": len(expected) + len(release_expected), "studio_classes_checked": bytecode_count,
             "libraries": jars,
             "note": "Licence entries are an inventory, not legal clearance. UI installation and external harness processes require smoke tests."}
 

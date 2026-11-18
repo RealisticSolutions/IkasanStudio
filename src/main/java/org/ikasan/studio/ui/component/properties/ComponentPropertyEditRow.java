@@ -56,6 +56,7 @@ public class ComponentPropertyEditRow {
     // change to its source field live. A genuine keystroke in this field clears it permanently, the same way
     // showingDefaultOnly is cleared, so a deliberate override is never silently clobbered by further auto-sync.
     private boolean autoDerivedValue = false;
+    private java.util.function.Supplier<Object> contextualDefault;
     private JButton defaultValueButton;
     private JButton chooseValueButton;
     private JCheckBox rowOverwriteCheckBox;
@@ -242,7 +243,7 @@ public class ComponentPropertyEditRow {
                 chooseValueButton = new JButton(StudioBundle.message("collection.Edit"));
                 chooseValueButton.setEnabled(!meta.isReadOnlyProperty());
                 chooseValueButton.addActionListener(e -> {
-                    var dialog = new StringCollectionDialog(project, meta.getPropertyName(), meta.getPropertyDataType(), getValue());
+                    var dialog = new StringCollectionDialog(project, meta, getValue());
                     if (dialog.showAndGet()) {
                         Object edited = dialog.value();
                         showingDefaultOnly = false;
@@ -356,6 +357,12 @@ public class ComponentPropertyEditRow {
                     }
                 }
             }
+        }
+        if (propertyValueField != null) {
+            // Update/Cancel own the edit transaction and validation reads the live text. A focus-loss
+            // formatter rewrite removes then reinserts the document, transiently disabling Update Code
+            // for a required field and disarming the mouse click that transferred focus to that button.
+            propertyValueField.setFocusLostBehavior(JFormattedTextField.PERSIST);
         }
         resetDataEntryComponentsWithNewValues();
         propertyTitleField.setToolTipText(StudioUIUtils.buildPropertyTooltipHtml(componentProperty.getMeta().getPropertyName(), propertyDisplayName, componentProperty.getMeta().getHelpText()));
@@ -559,7 +566,36 @@ public class ComponentPropertyEditRow {
      * (and so nothing is written into generated code) unless the user goes on to genuinely interact with the
      * field - typing, ticking a checkbox, or picking a choice.
      */
+    void prepareModulePortDefaultButton(int offset) {
+        defaultValueButton = new JButton(StudioBundle.message("button.Default"));
+        defaultValueButton.setToolTipText(StudioBundle.message("message.SetDefaultValueDerivedFrom", "port + " + offset));
+        defaultValueButton.addActionListener(event -> {
+            if (contextualDefault != null) { autoDerivedValue = false; applyContextualDefault(); }
+        });
+    }
+
+    void configureModulePortDefault(ComponentPropertyEditRow http, int offset, boolean initialisation) {
+        configureModulePortDefault(http, offset, initialisation, false);
+    }
+
+    void configureModulePortDefault(ComponentPropertyEditRow http, int offset, boolean initialisation, boolean automaticallyDefaulted) {
+        contextualDefault = () -> org.ikasan.studio.core.model.ikasan.instance.Module.derivedH2Port(
+                Objects.toString(http.getValue(), ""), offset);
+        if (initialisation && (initialValue == null || automaticallyDefaulted)) {
+            autoDerivedValue = true;
+            applyContextualDefault();
+            http.addValueChangeListener(() -> { if (autoDerivedValue) applyContextualDefault(); });
+        }
+    }
+
+    private void applyContextualDefault() {
+        suppressChangeDetection = true;
+        try { propertyValueField.setValue(contextualDefault.get()); showingDefaultOnly = false; }
+        finally { suppressChangeDetection = false; }
+    }
+
     public void setDefaultValue() {
+        if (contextualDefault != null) { applyContextualDefault(); return; }
         resetDataEntryComponentsWithNewValues();
     }
 
@@ -699,7 +735,7 @@ public class ComponentPropertyEditRow {
      * generator's own substitution, not shown to the user as a literal string.
      */
     private Object previewableDefault() {
-        Object defaultValue = componentProperty.getDefaultValue();
+        Object defaultValue = contextualDefault == null ? componentProperty.getDefaultValue() : contextualDefault.get();
         return (defaultValue == null || ComponentPropertyMeta.isSubstitutionValue(defaultValue)) ? null : defaultValue;
     }
 
@@ -740,8 +776,8 @@ public class ComponentPropertyEditRow {
             // the list out when there's really something there - a blank field leaves returnValue at its
             // already-null default.
             if (!rawValue.isBlank()) {
-                List<String> rawList = Arrays.asList(rawValue.split("\\s*,\\s*"));
-                Set<String> deduplicate = new HashSet<>(rawList);
+                List<String> rawList = Arrays.asList(rawValue.split("\\s*,\\s*", -1));
+                Set<String> deduplicate = new java.util.LinkedHashSet<>(rawList);
                 if (rawList.size() > deduplicate.size()) {
                     StudioUIUtils.displayIdeaWarnMessage(project, StudioBundle.message("message.DuplicatesInTheListWillBeRemoved"));
                     returnValue = new ArrayList<>(deduplicate);
@@ -889,20 +925,37 @@ public class ComponentPropertyEditRow {
         }
         // 2. Validate populated values. Required empty fields are handled above;
         // optional fields must remain clearable even when their pattern requires a value.
-        if (meta.getPropertyDataType() == java.lang.String.class && meta.getValidationPattern() != null
-                && propertyValueHasChanged() && !inputfieldIsUnset()) {
-            String valueToBeChecked;
-            // Currently, lists are being entered as comma separated values.
-            if (meta.getUsageDataType() != null && STRING_LIST.equals(meta.getUsageDataType())) {
-                valueToBeChecked = propertyValueField.getText();
-            } else {
-                valueToBeChecked = (String) getValue();
-            }
-            if (!meta.getValidationPattern().matcher(valueToBeChecked).matches()) {
-                result.add(new ValidationInfo(meta.getPropertyName() + ": " + meta.getValidationMessage(), getOverridingInputField()));
-            }
+        if (!inputfieldIsUnset()) {
+            String issue = patternValidationMessage(meta, getValue());
+            if (issue != null) result.add(new ValidationInfo(issue, getOverridingInputField()));
         }
+        String feedback = result.isEmpty() ? null : result.get(0).message;
+        if (propertyValueField != null) {
+            propertyValueField.putClientProperty("JComponent.outline", feedback == null ? null : "error");
+            propertyValueField.setToolTipText(feedback);
+        }
+        propertyTitleField.setIcon(feedback == null ? null : AllIcons.General.Error);
+        String displayName = meta.getDisplayLabel() == null ? meta.getPropertyName() : meta.getDisplayLabel();
+        propertyTitleField.setToolTipText(feedback == null
+                ? StudioUIUtils.buildPropertyTooltipHtml(meta.getPropertyName(), displayName, meta.getHelpText())
+                : feedback);
         return result;
+    }
+
+    /** Typed collection patterns apply per entry; legacy comma-separated patterns apply to the whole list. */
+    static String patternValidationMessage(ComponentPropertyMeta meta, Object value) {
+        if (!meta.hasValidation() || value == null) return null;
+        value = meta.patternValidationValue(value);
+        if (value instanceof List<?> entries) {
+            for (int i = 0; i < entries.size(); i++) {
+                if (!(entries.get(i) instanceof String text) || !meta.matchesValidation(text)) {
+                    return StudioBundle.message("validation.CollectionEntry", meta.getPropertyName(), i + 1, meta.getValidationMessage());
+                }
+            }
+        } else if (value instanceof String text && !meta.matchesValidation(text)) {
+            return meta.getPropertyName() + ": " + meta.getValidationMessage();
+        }
+        return null;
     }
 
     /**

@@ -42,7 +42,13 @@ public final class StudioProjectInitialisationService implements Disposable {
         void stateChanged(State state, String detail);
     }
 
+    record ImportReadiness(boolean imported, String detail) { }
+
     private final Project project;
+    private final com.intellij.util.Alarm importRecheck;
+    private final java.util.function.Supplier<ImportReadiness> importReadiness;
+    private final int importRecheckDelay;
+    private static final int IMPORT_RECHECK_DELAY_MS = 1000;
     private final AtomicBoolean inProgress = new AtomicBoolean();
     @Getter
     private volatile State state = State.NOT_STARTED;
@@ -51,13 +57,25 @@ public final class StudioProjectInitialisationService implements Disposable {
 
     private volatile List<Integer> validModelBackupIndexes = List.of();
     private volatile boolean disposed;
+    private boolean packDiagnosticsShown;
+    @Getter
+    private volatile List<String> availableMetaPacks = List.of();
+    @Getter
+    private volatile java.util.Set<String> snapshotMetaPacks = java.util.Set.of();
 
     public List<Integer> getValidModelBackupIndexes() {
         return validModelBackupIndexes;
     }
 
     public StudioProjectInitialisationService(Project project) {
+        this(project, () -> inspectImportReadiness(project), IMPORT_RECHECK_DELAY_MS);
+    }
+
+    StudioProjectInitialisationService(Project project, java.util.function.Supplier<ImportReadiness> readiness, int retryDelay) {
         this.project = project;
+        this.importReadiness = readiness;
+        this.importRecheckDelay = retryDelay;
+        this.importRecheck = new com.intellij.util.Alarm(com.intellij.util.Alarm.ThreadToUse.SWING_THREAD, this);
         project.getMessageBus().connect(this).subscribe(ModuleRootListener.TOPIC, new ModuleRootListener() {
             // Deliberately not @NotNull-annotated: this project avoids @NotNull (see CLAUDE.md)
             // because the IntelliJ Gradle plugin instruments it with a runtime assertion that
@@ -65,7 +83,7 @@ public final class StudioProjectInitialisationService implements Disposable {
             @SuppressWarnings("NullableProblems")
             @Override
             public void rootsChanged(ModuleRootEvent event) {
-                start();
+                if (state == State.NOT_STARTED || state == State.WAITING_FOR_PROJECT_IMPORT) start();
             }
         });
     }
@@ -74,19 +92,49 @@ public final class StudioProjectInitialisationService implements Disposable {
         if (disposed || project.isDisposed() || state == State.READY || !inProgress.compareAndSet(false, true)) {
             return;
         }
-        ReadAction.nonBlocking(() -> StudioProjectFiles.hasGeneratedContentRoot(project))
+        ReadAction.nonBlocking(importReadiness::get)
                 .expireWith(this)
                 .finishOnUiThread(ModalityState.defaultModalityState(), imported -> {
                     if (disposed || project.isDisposed()) {
                         inProgress.set(false);
-                    } else if (!imported) {
-                        waitForProjectImport();
+                    } else if (!imported.imported()) {
+                        waitForProjectImport(imported.detail());
                     } else {
                         transition(State.WAITING_FOR_INDEXES, null);
                         DumbService.getInstance(project).runWhenSmart(this::loadProjectWhenSmart);
                     }
                 })
-                .submit(AppExecutorUtil.getAppExecutorService());
+                .submit(AppExecutorUtil.getAppExecutorService())
+                .onError(failure -> {
+                    inProgress.set(false);
+                    if (!disposed && !project.isDisposed() && !(failure instanceof ProcessCanceledException)) {
+                        fail(org.ikasan.studio.ui.StudioBundle.message("initialisation.ImportCheckFailed"),
+                                failure instanceof Exception exception ? exception : new RuntimeException(failure));
+                    }
+                });
+    }
+
+    /** Ask Maven to rebuild its imported workspace model; Retry alone only observes readiness. */
+    public void reloadMavenProject() {
+        if (disposed || project.isDisposed() || state != State.WAITING_FOR_PROJECT_IMPORT) return;
+        try {
+            org.jetbrains.idea.maven.project.MavenProjectsManager.getInstance(project)
+                    .forceUpdateAllProjectsOrFindAllAvailablePomFiles();
+            LOG.info("STUDIO: Requested Maven project reimport for " + project.getName());
+            start();
+        } catch (ProcessCanceledException cancelled) { throw cancelled; }
+        catch (Exception failure) {
+            LOG.warn("STUDIO: Could not request Maven project reimport", failure);
+            org.ikasan.studio.ui.StudioUIUtils.displayIdeaWarnMessage(project,
+                    org.ikasan.studio.ui.StudioBundle.message("initialisation.ReloadMavenFailed", failure.getMessage()));
+        }
+    }
+
+    /** Restarts background loading after an explicit, validated revision-lock adoption. */
+    public void reloadModel() {
+        if (disposed || project.isDisposed() || inProgress.get()) return;
+        state = State.NOT_STARTED;
+        start();
     }
 
     public void markReady() {
@@ -112,20 +160,36 @@ public final class StudioProjectInitialisationService implements Disposable {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 if (disposed || project.isDisposed()) return;
-                if (!ReadAction.compute(() -> StudioProjectFiles.hasGeneratedContentRoot(project))) {
-                    waitForProjectImport();
+                var readiness = ReadAction.nonBlocking(importReadiness::get).expireWith(this).executeSynchronously();
+                if (!readiness.imported()) {
+                    waitForProjectImport(readiness.detail());
                     return;
                 }
+                if (!packDiagnosticsShown) {
+                    var problems = org.ikasan.studio.core.metapack.ComponentLibrary.getUnavailableMetaPacks();
+                    packDiagnosticsShown = true;
+                    if (!problems.isEmpty()) {
+                        String details = problems.entrySet().stream()
+                                .map(entry -> entry.getKey() + ": " + entry.getValue())
+                                .collect(java.util.stream.Collectors.joining("\n"));
+                        org.ikasan.studio.ui.StudioUIUtils.displayIdeaWarnMessage(project,
+                                org.ikasan.studio.ui.StudioBundle.message("metaPack.Unavailable", details));
+                    }
+                }
+                availableMetaPacks = List.copyOf(org.ikasan.studio.core.metapack.ComponentLibrary.getMetapackList());
+                var released = org.ikasan.studio.core.metapack.ComponentLibrary.getMetapackList(false);
+                snapshotMetaPacks = availableMetaPacks.stream().filter(id -> !released.contains(id))
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
                 UiContext uiContext = project.getService(UiContext.class);
                 validModelBackupIndexes = List.of();
                 StudioProjectFiles.synchGenerateModelInstanceFromJSON(project);
                 if (uiContext.isModelPersistenceBlocked()) {
                     validModelBackupIndexes = StudioProjectFiles.getValidModelBackupIndexes(project);
                     String recoveryGuidance = validModelBackupIndexes.isEmpty()
-                            ? "No valid automatic backup was found; correct the preserved file, then use Reload from Disk."
-                            : "Choose a validated backup below, or correct the preserved file and use Reload from Disk.";
+                            ? org.ikasan.studio.ui.StudioBundle.message("modelRepair.NoBackupGuidance")
+                            : org.ikasan.studio.ui.StudioBundle.message("modelRepair.BackupGuidance");
                     fail("Studio opened in recovery mode because model.json could not be loaded safely. " +
-                            "The original file is preserved. " + recoveryGuidance, null);
+                            "The original file is preserved. " + uiContext.getModelPersistenceBlockReason() + " " + recoveryGuidance, null);
                     return;
                 }
                 if (uiContext.getIkasanModule() == null) {
@@ -168,13 +232,33 @@ public final class StudioProjectInitialisationService implements Disposable {
         });
     }
 
-    private void waitForProjectImport() {
+    private static ImportReadiness inspectImportReadiness(Project project) {
+        boolean imported = StudioProjectFiles.hasGeneratedContentRoot(project);
+        if (imported) return new ImportReadiness(true, null);
+        String roots = java.util.Arrays.stream(com.intellij.openapi.roots.ProjectRootManager.getInstance(project).getContentRoots())
+                .filter(com.intellij.openapi.vfs.VirtualFile::isValid)
+                .map(com.intellij.openapi.vfs.VirtualFile::getPath).sorted().collect(java.util.stream.Collectors.joining("\n"));
+        String expected = project.getBasePath() + StudioProjectFiles.GENERATED_CONTENT_ROOT;
+        return new ImportReadiness(false, org.ikasan.studio.ui.StudioBundle.message("initialisation.ImportRoots", expected,
+                roots.isEmpty() ? org.ikasan.studio.ui.StudioBundle.message("initialisation.NoContentRoots") : roots));
+    }
+
+    private void waitForProjectImport(String reason) {
         inProgress.set(false);
-        transition(State.WAITING_FOR_PROJECT_IMPORT, null);
+        if (state != State.WAITING_FOR_PROJECT_IMPORT || !java.util.Objects.equals(detail, reason))
+            LOG.info("STUDIO: Waiting for generated module registration. " + reason);
+        transition(State.WAITING_FOR_PROJECT_IMPORT, reason);
+        // A rootsChanged event can arrive while a readiness read is still in progress,
+        // or before Maven's final workspace update becomes visible. Recheck independently.
+        importRecheck.cancelAllRequests();
+        if (!disposed && !project.isDisposed()) importRecheck.addRequest(() -> {
+            if (state == State.WAITING_FOR_PROJECT_IMPORT) start();
+        }, importRecheckDelay);
     }
 
     private void transition(State newState, String newDetail) {
         if (disposed) return;
+        if (newState != State.WAITING_FOR_PROJECT_IMPORT) importRecheck.cancelAllRequests();
         state = newState;
         detail = newDetail;
         if (!project.isDisposed()) {
@@ -185,6 +269,7 @@ public final class StudioProjectInitialisationService implements Disposable {
     @Override
     public void dispose() {
         disposed = true;
+        importRecheck.cancelAllRequests();
         inProgress.set(false);
     }
 }

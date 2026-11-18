@@ -38,7 +38,7 @@ The Ikasan Blue Console and the Ikasan Dashboard are distinct products and must 
 - The **Blue Console** is shipped with every Ikasan module and operates independently of the Dashboard. It is a developer-facing, module-local console used to start and stop flows, identify flows in stopped or error states, examine the module REST API, and perform administrative tasks.
 - The **Ikasan Dashboard** is a central control point for multiple modules. It provides an aggregate view of running modules and their error states, supports replaying rejected messages, and lets operators interact with remote modules through their REST interfaces.
 
-In space-constrained Studio navigation, the agreed button label is **Console**. Its tooltip and guidance must identify it as the module-local **Blue Console** and must never describe it as the **Ikasan Dashboard**.
+In space-constrained Studio navigation, the agreed button label is **Console**. Its tooltip and guidance must identify it as the module-local **Blue Console** and must never describe it as the **Ikasan Dashboard**. The canvas context-menu action uses the fuller label **Blue Console**; its H2 action is **Launch independent H2**.
 
 ## User Journey
 
@@ -84,6 +84,7 @@ The following behaviour is implemented; preserve it unless a later product decis
 - The empty-canvas onboarding progresses through adding a flow, adding a consumer and other components, running a valid module, waiting for startup, and opening Console. Detailed hints can be disabled in **Settings → Tools → Ikasan Studio**. Flow-level hints are positioned below the empty-flow artwork so they do not overlap it.
 - The top controls use **Run module** and **Console**. Console guidance tells developers to wait until module startup completes, explains its Blue Console purpose, and notes the local `admin` / `admin` login.
 - **Run module** creates or reuses a standard IntelliJ Java Application run configuration for `generated/src/main/java/org/ikasan/studio/boot/Application.java`, selects it in IntelliJ, and launches it through the normal execution APIs. Developers can subsequently use IntelliJ Run or Debug controls. Workspace module discovery uses a non-blocking read action and never performs slow file-index work on the EDT.
+- Independent H2 uses the generated `org.ikasan.studio.boot.IndependentH2` Java Application, the project's JDK and resolved H2 runtime dependency, with Run-window controls and project-scoped process tracking. It no longer uses a generated Maven helper POM or a separately pinned H2 version. Generator API 3 removes the legacy helper template; see [independent H2](docs/IndependentH2.md) for lifecycle, revision adoption and database compatibility.
 - Newly configured modules materialise `flowStartupType=AUTOMATIC`. The V3.3.9 and V4.1.6 property templates generate `ikasan.module.activator.startup.type.defaultStartupType=AUTOMATIC` in `application.properties`. Existing configured modules retain their chosen value.
 - `IkasanStudioFileEditorProvider` hosts the designer in the main editor region. The right-stripe squid icon is a direct one-click launcher, Tools and Find Action remain fallbacks, open-state restoration respects deliberate tab closure, and the editor tab uses the same squid icon as the stripe launcher.
 - `DesignerUI` has a single owner per project. Closing the editor clears UI-only `UiContext` references while retaining the module and project model for a clean reopen.
@@ -125,9 +126,17 @@ The root [settings.gradle.kts](settings.gradle.kts) includes `headless/` as a co
 
 ### Meta-packs
 
-Meta-pack sources live under `src/main/resources/studio/metapack/`. The bundled packs are `V3.3.9` and `V4.1.6`; each supplies `metapack.json`, a component library (JSON descriptors and icons), and version-specific FreeMarker templates. Shared schemas live under `schema/`. Historic VHS and older-version references do not identify currently bundled packs.
+Meta-pack sources live under `src/main/resources/studio/metapack/`. The bundled packs are `V3.3.9`, `V4.1.6` and `V5.1.0` (the latter under `headless/studio-pack-v5-release/src/main/resources/`); each supplies `metapack.json`, a component library (JSON descriptors and icons), and version-specific FreeMarker templates. Shared schemas live under `schema/`. Historic VHS and older-version references do not identify currently bundled packs.
 
-`headless/studio-pack-v3` and `headless/studio-pack-v4` package the respective resource directories; `studio-bundled-packs` selects their exact revisions. The root plugin excludes these resources from its own resource source set to avoid duplicate packaging. Follow the [meta-pack authoring guide](src/main/resources/studio/metapack/METAPACK.md), [compliance requirements](src/main/resources/studio/metapack/METAPACK_COMPLIANCE.md), and [independent pack release guide](docs/IndependentMetaPackArtifacts.md) when changing or adding packs.
+Ikasan 5 uses the released **V5.1.0** pack and JDK 25. The unused 5.0.1 snapshot pack and bundled activation payload have been removed. Independently installed experimental packs can still be selected with **Allow snapshot meta-packs**; see [snapshot meta-packs](docs/SnapshotMetaPacks.md). Migration choices remain V3/V4 only. This is not Marketplace release certification.
+
+`headless/studio-pack-v3` and `headless/studio-pack-v4` package the respective resource directories; `headless/studio-pack-v5-release` packages the released Ikasan 5.1.0 adapter; `studio-bundled-packs` selects all three exact revisions. The independent Maven example `ikasan-studio-ancillary/ikasan5-metapack` uses `ExampleIkasan5` so it can coexist with the bundled pack. The root plugin excludes these resources from its own resource source set to avoid duplicate packaging. Follow the [meta-pack authoring guide](src/main/resources/studio/metapack/METAPACK.md), [compliance requirements](src/main/resources/studio/metapack/METAPACK_COMPLIANCE.md), and [independent pack release guide](docs/IndependentMetaPackArtifacts.md) when changing or adding packs.
+
+Complete external pack JARs can be installed through **Tools → Ikasan Studio → Install Meta-Pack…**. **Manage Meta-Packs…** schedules external updates/removal for restart, cancels pending changes and restores retained artifacts. `core.metapack.loading.MetaPackStore` owns pending operations, integrity checks and immutable history; it never replaces a session's active JAR during a management operation. Bundled revisions remain controlled by plugin distribution.
+
+Offline tools exports include the saved project’s required custom pack and a `meta-packs.json` revision/checksum inventory. `OfflinePackBundle` validates portable artifacts; the CLI directory provider is read-only and resolves resources relative to the exported distribution. CLI `validate` and `render` support these packs without widening migration paths; `ProjectArtifactRenderer` is shared with IDE migration rendering.
+
+Saved document-format models record `studio.metaPackRevision` when revision metadata exists. `IkasanModelDocuments` rejects revision mismatches before restoring components; legacy/unlocked models acquire a lock on save. **Adopt Installed Meta-Pack Revision…** provides explicit, validated adoption with a model backup. One revision per ID is active in an IDE session; locks protect projects from silent upgrades but do not provide simultaneous per-project revision resolution. See [custom-pack handover](docs/CustomMetaPackHandover.md) for lifecycle and remaining limitations.
 
 The meta-pack layer is the compatibility boundary between the version-neutral Studio model and generated code for a particular Ikasan version. Do not leak meta-pack implementation complexity into the first-run UX unless a user must make a meaningful choice.
 
@@ -148,6 +157,7 @@ The main plugin itself uses Gradle and the IntelliJ Platform Gradle Plugin.
 - `./gradlew -p headless test` runs the standalone engine, test-kit and pack suites without configuring the IntelliJ build.
 - `./gradlew check` includes headless checks and meta-pack validation; BOM/help-URL checks require network access. See [engine and meta-pack testing](docs/TestingEngineAndMetaPacks.md) for focused suite selection.
 - `./gradlew runHarness` runs the separate visual Swing harness.
+- For ordinary local development, the project owner launches the plugin from this repository. Skip ZIP generation unless a distributable or release-packaging verification is requested.
 - `./gradlew buildPlugin` builds the distributable plugin ZIP; `./gradlew verifyReleaseArchive` audits its contents. If another sandbox is running, use an isolated directory, for example `-PstudioSandboxDirectory=build/verification-sandbox`.
 - `./gradlew runIdeModern` launches the newer IntelliJ IDEA sandbox (version selected by `sandboxIdeVersion`); the shared **Run Plugin** configuration uses this task.
 - `./gradlew runIde` launches the Community 2024.3.7 regression sandbox; the shared **Run Plugin (2024.3.7 Regression)** configuration uses this task. Compilation and automated tests retain the 2024.3.7 target.
@@ -166,6 +176,30 @@ Tests cover the model, JSON IO, meta-pack lookup, code generators, PSI/file beha
 5. **Meta-pack resilience.** Invalid or incomplete packs should produce actionable user-facing diagnostics and must not destabilise the IDE.
 6. **Generated/user code ownership.** Never overwrite developer-owned code unexpectedly. Make regeneration scope and consequences clear.
 7. **Version compatibility.** Validate generated output against the corresponding Ikasan source and APIs, not assumptions based on another major version.
+
+## Generated-test diagnostics and debugging
+
+Making failures easy to understand and fix is a product requirement, alongside making tests easy
+to create and run. Apply this pattern to future generated tests, adapting it to the test framework:
+
+- Keep a small comparison hook in the developer-owned test, near the test method. Expose the
+  expected value, original observed payload and final comparison value together, with a comment
+  identifying the assertion line as a useful breakpoint. Keep transport and fixture plumbing
+  in support code where possible.
+- Preserve native Expected/Actual comparison and diff support. Add relevant flow, batch,
+  component/producer and output context without burying the actual mismatch.
+- When a developer assertion fails, make the first reported stack frame point to its real captured
+  source location. Never hard-code filenames or line numbers, invent locations, or redirect setup,
+  timeout or runtime failures to an assertion they did not reach. Preserve original causes.
+- Make diagnostics accurate and actionable. Distinguish value mismatches, missing comparison
+  implementations, invalid fixtures and runtime failures. Do not claim equals is missing merely
+  because objects differ. Never alter expected business values just to make a test pass.
+- Verify failure messages and navigation, including Expected/Actual preservation and fallback
+  to the real support-code location for failures outside developer assertions.
+
+Flow tests use `assertExpectedOutput(expected, actualAfterProducer)` and
+`FlowTestFailureDiagnostics`; see [flow testing](docs/IkasanFlowTesting.md). This is a general UX
+principle, not a requirement to duplicate flow-specific machinery in every kind of test.
 
 ## Working Conventions
 
@@ -203,3 +237,7 @@ Use this file as the primary tool-neutral project context. For exact package pat
 - [Ancillary README](ikasan-studio-ancillary/README.md) describes the separately versioned Maven archetype and IDE mediator. The [archetype AGENTS.md](ikasan-studio-ancillary/ikasan-studio-project-archetype/src/main/resources/archetype-resources/AGENTS.md) is shipped into generated applications; its instructions govern those applications, while this root file governs Studio development, including archetype templates. Keep both filenames so agents can discover the instructions in each resulting project.
 
 Keep user-facing terminology and screenshots aligned with the supported plugin and Ikasan versions. Whenever `src/main/resources/messages/studioBundle.properties` changes, update `src/main/resources/messages/studioBundle_ja.properties` in the same change, preserving keys, format placeholders, HTML markup and user-facing meaning.
+
+### Ikasan 5 Java baseline
+
+New Ikasan 5 work targets JDK 25 LTS. Do not use Java 26-specific APIs, language features or preview features. Released V5.1.0 and the independent ExampleIkasan5 pack target Java 25; plugin and pack-authoring compilation remains Java 17. Dated Java 26 evidence does not establish the baseline for new work.

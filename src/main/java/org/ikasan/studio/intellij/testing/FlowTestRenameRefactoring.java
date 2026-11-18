@@ -30,6 +30,18 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Targeted refactoring of recognised test references; never regenerates business scenarios. */
 public final class FlowTestRenameRefactoring {
     private FlowTestRenameRefactoring() { }
+
+    /** Expected precondition failure, suitable for guidance rather than an IDE warning stack trace. */
+    public static class RenameBlockedException extends IllegalStateException {
+        protected RenameBlockedException(String message) { super(message); }
+    }
+    private static final class UnsavedDocumentException extends RenameBlockedException {
+        private final com.intellij.openapi.editor.Document document;
+        private UnsavedDocumentException(com.intellij.openapi.editor.Document document, String fileName) {
+            super(StudioBundle.message("flowTest.renameUnsaved", fileName));
+            this.document = document;
+        }
+    }
     private record Edit(SmartPsiElementPointer<PsiLiteralExpression> pointer, String before, String after) { }
     private record TextEdit(com.intellij.openapi.editor.Document document, String before, String after) { }
     private record Move(VirtualFile directory, String before, String after) { }
@@ -175,11 +187,30 @@ public final class FlowTestRenameRefactoring {
     public static Plan prepare(Project project, Module module, Flow flow, FlowElement component, String newName) {
         AtomicReference<Plan> result = new AtomicReference<>();
         AtomicReference<RuntimeException> failure = new AtomicReference<>();
-        com.intellij.openapi.application.WriteIntentReadAction.run((Runnable) () ->
+        com.intellij.openapi.application.WriteIntentReadAction.run((Runnable) () -> {
+            var psi = PsiDocumentManager.getInstance(project);
+            psi.commitAllDocuments();
+            while (true) {
+                failure.set(null);
                 ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
-                    try { result.set(ReadAction.compute(() -> inspect(project, module, flow, component, newName))); }
+                    try { result.set(ReadAction.nonBlocking(() -> inspect(project, module, flow, component, newName))
+                            .expireWith(project.getService(org.ikasan.studio.intellij.project.StudioProjectInitialisationService.class)).executeSynchronously()); }
+                    catch (com.intellij.openapi.progress.ProcessCanceledException canceled) { throw canceled; }
                     catch (RuntimeException ex) { failure.set(ex); }
-                }, StudioBundle.message("flowTest.renamePreparing"), false, project));
+                }, StudioBundle.message("flowTest.renamePreparing"), false, project);
+                if (!(failure.get() instanceof UnsavedDocumentException unsaved)) break;
+                // Save only documents actually identified by the rename inspection. Keep unrelated edits unsaved.
+                var manager = FileDocumentManager.getInstance();
+                VirtualFile file = manager.getFile(unsaved.document);
+                if (file == null || !file.isValid() || !file.isWritable())
+                    throw new RenameBlockedException(StudioBundle.message("flowTest.renameSaveFailed"));
+                manager.saveDocument(unsaved.document);
+                if (manager.isDocumentUnsaved(unsaved.document))
+                    throw new RenameBlockedException(StudioBundle.message("flowTest.renameSaveFailed"));
+                psi.commitDocument(unsaved.document);
+                // Saving may format or otherwise change the file; discard the partial plan and inspect afresh.
+            }
+        });
         if (failure.get() != null) throw failure.get();
         return result.get();
     }
@@ -234,7 +265,7 @@ public final class FlowTestRenameRefactoring {
                 }
                 if (!before.equals(after)) {
                     if (manager.isDocumentUnsaved(document))
-                        throw new IllegalStateException(StudioBundle.message("flowTest.renameUnsaved", properties.getName()));
+                        throw new UnsavedDocumentException(document, properties.getName());
                     plan.textEdits.add(new TextEdit(document, before, after));
                 }
             }
@@ -253,7 +284,7 @@ public final class FlowTestRenameRefactoring {
         while (!pending.isEmpty()) {
             VirtualFile file = pending.removeFirst();
             if (file.isDirectory()) {
-                if (file == directory || !file.getName().equals("support"))
+                if (file.equals(directory) || !file.getName().equals("support"))
                     Collections.addAll(pending, file.getChildren());
                 continue;
             }
@@ -277,7 +308,7 @@ public final class FlowTestRenameRefactoring {
                 }
                 var doc = FileDocumentManager.getInstance().getCachedDocument(file);
                 if (doc != null && FileDocumentManager.getInstance().isDocumentUnsaved(doc))
-                    throw new IllegalStateException(StudioBundle.message("flowTest.renameUnsaved", file.getName()));
+                    throw new UnsavedDocumentException(doc, file.getName());
                 if (flowRename) prepareClassRename(plan, clazz, flow, newName);
                 for (PsiLiteralExpression literal : PsiTreeUtil.findChildrenOfType(clazz, PsiLiteralExpression.class)) {
                     if (PsiTreeUtil.getParentOfType(literal, PsiClass.class) != clazz
@@ -296,9 +327,12 @@ public final class FlowTestRenameRefactoring {
                                 "sequencer", "producer").contains(callName)) replacement = newName;
                         if (call != null && Set.of("runObservationTest", "runTest").contains(callName)) {
                             var args = call.getArgumentList().getExpressions();
-                            if (args.length > 1 && args[1] == literal) replacement = newName;
+                            // Legacy overloads start with a boolean review flag; current ones start with the producer.
+                            int producerIndex = args.length > 0 && PsiTypes.booleanType().equals(args[0].getType()) ? 1 : 0;
+                            if (args.length > producerIndex && args[producerIndex] == literal) replacement = newName;
                         }
                     }
+                    if (!flowRename && oldName.equals(value) && isBatchProducerKey(literal, call)) replacement = newName;
                     if (keys.containsKey(value) && Set.of("getRequiredProperty", "getProperty").contains(callName))
                         replacement = keys.get(value);
                     if (value.startsWith(oldResource) && field != null && field.getInitializer() == literal
@@ -312,6 +346,33 @@ public final class FlowTestRenameRefactoring {
             }
         }
     }
+    private static boolean isBatchProducerKey(PsiLiteralExpression literal, PsiMethodCallExpression call) {
+        if (call == null) return false;
+        var qualifier = call.getMethodExpression().getQualifierExpression();
+        if (qualifier == null || !Set.of("Map", "java.util.Map").contains(qualifier.getText())) return false;
+        String name = call.getMethodExpression().getReferenceName();
+        var arguments = call.getArgumentList().getExpressions();
+        boolean key = false;
+        if ("entry".equals(name)) key = arguments.length == 2 && arguments[0] == literal;
+        else if ("of".equals(name)) {
+            for (int i = 0; i < arguments.length; i += 2) {
+                if (arguments[i] == literal) {
+                    key = true;
+                    break;
+                }
+            }
+        }
+        if (!key) return false;
+        var parent = PsiTreeUtil.getParentOfType(call, PsiMethodCallExpression.class, true);
+        if (parent != null && "ofEntries".equals(parent.getMethodExpression().getReferenceName())) {
+            call = parent;
+            parent = PsiTreeUtil.getParentOfType(call, PsiMethodCallExpression.class, true);
+        }
+        if (parent == null || !"batch".equals(parent.getMethodExpression().getReferenceName())) return false;
+        var batchArgs = parent.getArgumentList().getExpressions();
+        return batchArgs.length == 2 && batchArgs[1] == call;
+    }
+
     private static void prepareClassRename(Plan plan, PsiClass clazz, String oldFlow, String newFlow) {
         String before = StudioBuildUtils.toJavaClassName(oldFlow) + "FlowTest";
         String after = StudioBuildUtils.toJavaClassName(newFlow) + "FlowTest";
@@ -336,7 +397,7 @@ public final class FlowTestRenameRefactoring {
         if (document == null || !file.isWritable())
             throw new IllegalStateException(StudioBundle.message("flowTest.renameConflict", file.getName()));
         if (FileDocumentManager.getInstance().isDocumentUnsaved(document))
-            throw new IllegalStateException(StudioBundle.message("flowTest.renameUnsaved", file.getName()));
+            throw new UnsavedDocumentException(document, file.getName());
         plan.classDocuments.putIfAbsent(document, document.getText());
     }
 

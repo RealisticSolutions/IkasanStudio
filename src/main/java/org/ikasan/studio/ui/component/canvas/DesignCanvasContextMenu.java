@@ -66,6 +66,12 @@ public class DesignCanvasContextMenu {
             if (ComponentNavigationAvailability.forComponent(project, ikasanBasicElement).code()) {
                 menu.add(createNavigateToCode(project, ikasanBasicElement, false));
             }
+            JMenuItem jumpToTest = new JMenuItem(StudioBundle.message("menu.JumpToFlowTest"));
+            jumpToTest.addActionListener(e -> org.ikasan.studio.intellij.testing.NavigateToFlowTestAction.open(project, flow));
+            menu.add(jumpToTest);
+            JMenuItem runTest = new JMenuItem(StudioBundle.message("menu.RunFlowTest"));
+            runTest.addActionListener(e -> org.ikasan.studio.intellij.testing.RunFlowTestAction.run(project, flow));
+            menu.add(runTest);
             addNavigateToPropertiesMenuItemIfAvailable(menu, project, ikasanBasicElement);
 
         } else if (ikasanBasicElement instanceof FlowElement flowElement) {
@@ -124,7 +130,7 @@ public class DesignCanvasContextMenu {
                 JMenuItem harness = new JMenuItem(StudioBundle.message("sftpHarness.title"));
                 harness.addActionListener(e -> SftpHarnessAction.choose(project));
                 menu.add(harness);
-                if (project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class).isLocal()) {
+                if (org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effective(project, flowElement)) {
                     JMenuItem files = new JMenuItem(StudioBundle.message("sftpHarness.files"));
                     files.addActionListener(e -> SftpHarnessAction.showFiles(project));
                     menu.add(files);
@@ -196,7 +202,7 @@ public class DesignCanvasContextMenu {
             JMenuItem importModel = new JMenuItem(StudioBundle.message("button.ImportModelJson"));
             importModel.setToolTipText(StudioBundle.message("tooltip.ImportModelJson"));
             importModel.addActionListener(event ->
-                    org.ikasan.studio.intellij.project.ModelImporter.openImportDialog(project));
+                    org.ikasan.studio.intellij.project.ModelImporter.openImportDialog(project, canvas));
             menu.add(importModel);
             JMenuItem migrate = new JMenuItem(StudioBundle.message("action.IkasanStudio.MigrateVersion.text"));
             migrate.setToolTipText(StudioBundle.message("action.IkasanStudio.MigrateVersion.description"));
@@ -205,7 +211,7 @@ public class DesignCanvasContextMenu {
             menu.add(migrate);
             menu.addSeparator();
 
-            menu.add(createLaunchDashboardMenuItem(project));
+            menu.add(createLaunchBlueConsoleMenuItem(project));
             menu.add(createLaunchH2MenuItem(project));
             menu.add(createDebugMenuItem(project));
             menu.addSeparator();
@@ -598,8 +604,8 @@ public class DesignCanvasContextMenu {
         return item;
     }
 
-    private static JMenuItem createLaunchDashboardMenuItem(Project project) {
-        JMenuItem item = new JMenuItem(StudioBundle.message("label.Console"));
+    private static JMenuItem createLaunchBlueConsoleMenuItem(Project project) {
+        JMenuItem item = new JMenuItem(StudioBundle.message("menu.BlueConsole"));
         item.addActionListener(new LaunchBlueAction(project));
         return item;
     }

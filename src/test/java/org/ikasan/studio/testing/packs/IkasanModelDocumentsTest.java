@@ -23,6 +23,127 @@ class IkasanModelDocumentsTest {
         return Files.readString(Path.of("src/test/resources/org/ikasan/studio", name));
     }
 
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
+    void legacyXmlDocumentsWithoutNativeConfigurationRemainReadable(String pack) throws Exception {
+        var xml = org.ikasan.studio.core.model.ikasan.instance.FlowElement.flowElementBuilder()
+                .componentMeta(org.ikasan.studio.core.metapack.ComponentLibrary.getIkasanComponentByKeyMandatory(pack, "Object To XML String Converter"))
+                .componentName("XML converter").build();
+        xml.defaultUnsetMandatoryProperties();
+        xml.setPropertyValue("objectClass", "org.example.Order");
+        var flow = org.ikasan.studio.core.TestFixtures.getUnbuiltFlow(pack)
+                .consumer(org.ikasan.studio.core.TestFixtures.getEventGeneratingConsumer(pack)).build();
+        flow.getFlowRoute().getFlowElements().add(xml);
+        xml.setContainingFlowRoute(flow.getFlowRoute());
+        var module = org.ikasan.studio.core.TestFixtures.getMyFirstModuleIkasanModule(pack, java.util.List.of(flow));
+        ObjectNode document = (ObjectNode) json.readTree(ModelTemplate.create(module));
+        ObjectNode nativeXml = (ObjectNode) java.util.stream.StreamSupport.stream(
+                document.at("/module/flows/0/flowElements").spliterator(), false)
+                .filter(c -> c.path("componentName").asText().equals("XML converter")).findFirst().orElseThrow();
+        String id = nativeXml.path("configurationId").asText();
+        var records = (com.fasterxml.jackson.databind.node.ArrayNode) document.path("configuration");
+        for (int i = records.size() - 1; i >= 0; i--)
+            if (id.equals(records.get(i).path("configurationId").asText())) records.remove(i);
+        // Modern documents with dangling configuration references must still be rejected.
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(document.toString(), "missing modern XML configuration", false))
+                .hasMessageContaining("Missing configuration");
+        nativeXml.remove(java.util.List.of("configurationId", "configurable"));
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(document.toString(), "modern XML without a configuration link", false))
+                .hasMessageContaining("Missing configuration");
+        nativeXml.put("implementingClass", "org.ikasan.builder.component.converter.ObjectToXmlStringConverterBuilder");
+        ObjectNode settings = (ObjectNode) document.path("studio").path("flows").path(flow.getIdentity())
+                .path("components").path("XML converter");
+        settings.remove(java.util.List.of("configurationIdProperty", "configurationIdTemplate"));
+        ObjectNode properties = (ObjectNode) settings.path("properties");
+        // The user's older document contains only objectClass; no XML runtime fields or record.
+        var restored = ComponentIO.validatePersistedModuleJson(document.toString(), "historical XML document", false);
+        var restoredXml = restored.getFlows().get(0).getFlowRoute().getFlowElements().get(0);
+        assertThat(restoredXml.getPropertyValue("objectClass")).isEqualTo("org.example.Order");
+        assertThat(restoredXml.getComponentMeta().getImplementingClass())
+                .isEqualTo("org.ikasan.component.converter.xml.ObjectToXMLStringConverter");
+        var saved = json.readTree(ModelTemplate.create(restored));
+        assertThat(saved.toString()).doesNotContain("ObjectToXmlStringConverterBuilder");
+        assertThat(ComponentIO.validatePersistedModuleJson(saved.toString(), "upgraded XML document", false).getFlows()).hasSize(1);
+        // Settings supplied by old Studio documents remain explicit, including false booleans.
+        properties.put("validate", false).put("rootName", "original-root");
+        restored = ComponentIO.validatePersistedModuleJson(document.toString(), "historical XML settings", false);
+        restoredXml = restored.getFlows().get(0).getFlowRoute().getFlowElements().get(0);
+        assertThat(restoredXml.getPropertyValue("validate")).isEqualTo(false);
+        assertThat(restoredXml.getPropertyValue("rootName")).isEqualTo("original-root");
+        nativeXml.put("configurable", true);
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(document.toString(), "XML explicitly declared configurable", false))
+                .hasMessageContaining("Missing configuration");
+        nativeXml.remove("configurable");
+        nativeXml.put("configurationId", "missing-explicit-record");
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(document.toString(), "dangling legacy XML configuration", false))
+                .hasMessageContaining("Missing configuration");
+    }
+
+    @Test void unavailablePackReportsRequiredIdentityWithoutClaimingTheJsonIsMalformed() throws Exception {
+        ObjectNode saved = (ObjectNode) json.readTree(ModelTemplate.create(
+                ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "legacy", false)));
+        ((ObjectNode) saved.get("studio")).put("metaPack", "V5.0.1-SNAPSHOT");
+        ((ObjectNode) saved.get("studio")).put("metaPackRevision", "0.1.0-SNAPSHOT");
+        ((ObjectNode) saved.get("module")).put("ikasanVersion", "5.0.1-SNAPSHOT");
+        var original = saved.deepCopy();
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(saved.toString(), "model.json", false))
+                .hasMessageContaining("requires meta-pack V5.0.1-SNAPSHOT at revision 0.1.0-SNAPSHOT")
+                .hasMessageContaining("unavailable or invalid")
+                .hasMessageNotContaining("not valid JSON");
+        assertThat(saved).isEqualTo(original);
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson("{broken", "model.json", false))
+                .hasMessageContaining("not valid JSON");
+    }
+
+    @Test void savedDocumentsLockTheirPackRevisionAndOldDocumentsAcquireALockOnSave() throws Exception {
+        var module = ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "legacy", false);
+        ObjectNode saved = (ObjectNode) json.readTree(ModelTemplate.create(module));
+        String current = org.ikasan.studio.core.metapack.ComponentLibrary.getMetaPackManifest(module.getVersion()).packVersion();
+        assertThat(saved.at("/studio/metaPackRevision").asText()).isEqualTo(current);
+        ((ObjectNode) saved.get("studio")).remove("metaPackRevision");
+        var olderDocument = ComponentIO.validatePersistedModuleJson(saved.toString(), "older document", false);
+        assertThat(json.readTree(ModelTemplate.create(olderDocument)).at("/studio/metaPackRevision").asText()).isEqualTo(current);
+    }
+
+    @Test void mismatchedRevisionIsRejectedAndExplicitAdoptionRetainsTheOriginal(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        var module = ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "legacy", false);
+        ObjectNode original = (ObjectNode) json.readTree(ModelTemplate.create(module));
+        ((ObjectNode) original.get("studio")).put("metaPackRevision", "0.0.1");
+        String source = original.toString();
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(source, "locked", false))
+                .hasMessageContaining("locked to revision 0.0.1");
+        var plan = org.ikasan.studio.core.metapack.MetaPackRevisionLock.preview(source);
+        ObjectNode expected = original.deepCopy();
+        ((ObjectNode) expected.get("studio")).put("metaPackRevision", plan.availableRevision());
+        assertThat(json.readTree(plan.targetJson())).isEqualTo(expected);
+        Path model = directory.resolve("model.json");
+        Files.writeString(model, source);
+        org.ikasan.studio.core.metapack.MetaPackRevisionLock.apply(model, plan);
+        assertThat(Files.readString(model.resolveSibling("model.json.bak.1"))).isEqualTo(source);
+        assertThat(ComponentIO.validatePersistedModuleJson(Files.readString(model), "adopted", false).getVersion()).isEqualTo(module.getVersion());
+    }
+
+    @Test void revisionAdoptionRejectsStaleOrForgedReviews(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        ObjectNode original = (ObjectNode) json.readTree(ModelTemplate.create(ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "legacy", false)));
+        ((ObjectNode) original.get("studio")).put("metaPackRevision", "0.0.1");
+        var plan = org.ikasan.studio.core.metapack.MetaPackRevisionLock.preview(original.toString());
+        Path model = directory.resolve("model.json");
+        Files.writeString(model, original + "\n");
+        assertThatThrownBy(() -> org.ikasan.studio.core.metapack.MetaPackRevisionLock.apply(model, plan)).hasMessageContaining("changed after review");
+        Files.writeString(model, original.toString());
+        var forged = new org.ikasan.studio.core.metapack.MetaPackRevisionLock.Plan(plan.packId(), plan.previousRevision(), plan.availableRevision(), plan.sourceJson(), "{}");
+        assertThatThrownBy(() -> org.ikasan.studio.core.metapack.MetaPackRevisionLock.apply(model, forged)).hasMessageContaining("stale");
+        assertThat(Files.readString(model)).isEqualTo(original.toString());
+        assertThat(Files.exists(model.resolveSibling("model.json.bak.1"))).isFalse();
+    }
+
+    @Test void malformedRevisionLocksAreRejected() throws Exception {
+        ObjectNode source = (ObjectNode) json.readTree(ModelTemplate.create(ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "legacy", false)));
+        for (var value : java.util.List.of(json.nullNode(), json.getNodeFactory().numberNode(42), json.getNodeFactory().textNode(""))) {
+            ((ObjectNode) source.get("studio")).set("metaPackRevision", value);
+            assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(source.toString(), "malformed lock", false)).hasMessageContaining("metaPackRevision");
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"populated_module.json", "populated_module_with_router.json", "populated_module_with_exception_resolver.json",
             "populated_module_just_consumer_and_null_properties.json", "populated_module_with_empty_elements.json"})
@@ -46,6 +167,34 @@ class IkasanModelDocumentsTest {
         assertThat(json.readTree(ModelTemplate.create(loaded))).isEqualTo(docs);
     }
 
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
+    void inferredConfigurationIdsDoNotBecomeExplicitPropertiesOnReload(String pack) throws Exception {
+        ObjectNode legacy = (ObjectNode) json.readTree(fixture("populated_module.json"));
+        legacy.put("version", pack);
+        var flow = (ObjectNode) legacy.path("flows").get(0);
+        var meta = org.ikasan.studio.core.metapack.ComponentLibrary.getIkasanComponentByKeyMandatory(pack, "Scheduled Consumer");
+        var consumer = flow.putObject("consumer").put("componentName", "Scheduled input")
+                .put("componentType", meta.getComponentType()).put("implementingClass", meta.getImplementingClass())
+                .put("cronExpression", "0/5 * * * * ?");
+        if (meta.getAdditionalKey() != null) consumer.put("additionalKey", meta.getAdditionalKey());
+        flow.remove(java.util.List.of("flowElements", "transitions"));
+        var live = ComponentIO.validatePersistedModuleJson(legacy.toString(), "live", false);
+        var saved = json.readTree(ModelTemplate.create(live));
+        var reloaded = ComponentIO.validatePersistedModuleJson(saved.toString(), "saved", false);
+        assertThat(json.readTree(ModelTemplate.create(reloaded))).isEqualTo(saved);
+        assertThat(reloaded.getFlows().get(0).getConsumer().getPropertyValue("configurationId")).isNull();
+        // An explicit choice must survive even when it happens to equal the automatic ID.
+        String id = saved.at("/module/flows/0/flowElements/0/configurationId").asText();
+        if (id.isEmpty()) id = saved.at("/module/flows/0/consumer/configurationId").asText();
+        assertThat(id).isNotEmpty();
+        consumer.put("configurationId", id);
+        var explicit = ComponentIO.validatePersistedModuleJson(legacy.toString(), "explicit", false);
+        var explicitSaved = json.readTree(ModelTemplate.create(explicit));
+        var explicitReloaded = ComponentIO.validatePersistedModuleJson(explicitSaved.toString(), "explicit saved", false);
+        assertThat(explicitReloaded.getFlows().get(0).getConsumer().getPropertyValue("configurationId")).isEqualTo(id);
+        assertThat(json.readTree(ModelTemplate.create(explicitReloaded))).isEqualTo(explicitSaved);
+    }
+
     @Test void bothMigrationDirectionsRetainTheDocumentFormat() throws Exception {
         String source = ModelTemplate.create(ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "test", false));
         var forward = ModelMigration.analyse(source, "V4.1.6");
@@ -58,7 +207,7 @@ class IkasanModelDocumentsTest {
                 .isEqualTo(json.readTree(source));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6"})
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
     void configurationIsAuthoritativeAndUnknownParametersSurvive(String pack) throws Exception {
         ObjectNode legacy = (ObjectNode) json.readTree(fixture("populated_module.json"));
         legacy.put("version", pack);
@@ -82,6 +231,153 @@ class IkasanModelDocumentsTest {
         assertThat(saved.path("configuration").get(0).path("parameters").toString()).contains("futureFlag");
         ((ObjectNode) parameters.get(0)).put("value", false);
         assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(docs.toString(), "test", false)).hasMessageContaining("value type");
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
+    void omittedRuntimeValuesStayUnsetAcrossImportSaveReloadAndGeneration(String pack) throws Exception {
+        var topology = json.createObjectNode().put("name", "Imported JMS").put("ikasanVersion", pack.substring(1));
+        var flow = topology.putArray("flows").addObject().put("name", "Orders").put("flowStartupType", "AUTOMATIC");
+        var elements = flow.putArray("flowElements");
+        var configuration = json.createArrayNode();
+        for (String variant : java.util.List.of("Spring JMS Consumer", "Spring JMS Producer")) {
+            var meta = org.ikasan.studio.core.metapack.ComponentLibrary.getIkasanComponentByKeyMandatory(pack, variant);
+            String name = meta.isConsumer() ? "Receive" : "Send";
+            var element = elements.addObject().put("componentName", name).put("componentType", meta.getComponentType())
+                    .put("implementingClass", meta.getImplementingClass()).put("configurationId", name + "-config");
+            if (meta.isConsumer()) flow.set("consumer", element.deepCopy());
+            String type = meta.getRuntimeConfigurationClass();
+            if (type == null) type = meta.getAllowableProperties().get("configuration").getUsageDataType();
+            var parameters = configuration.addObject().put("configurationId", name + "-config")
+                    .put("implementingClass", type).putArray("parameters");
+            parameters.addObject().put("name", "destinationJndiName").put("value", "queue/orders");
+            if (!meta.isConsumer()) {
+                parameters.addObject().put("id", 12).put("name", "priority")
+                        .put("implementingClass", "org.ikasan.configurationService.model.ConfigurationParameterIntegerImpl");
+                parameters.addObject().put("name", "receiveTimeout").putNull("value");
+                parameters.addObject().put("name", "deliveryPersistent").put("value", false);
+                parameters.addObject().put("name", "timeToLive").put("value", 0L);
+            }
+        }
+        flow.putArray("transitions").addObject().put("from", "Receive").put("to", "Send").put("name", "default");
+        var imported = org.ikasan.studio.core.importer.IkasanRuntimeImport.convert(
+                topology.toString(), configuration.toString(), pack, "org.example");
+        var module = ComponentIO.validatePersistedModuleJson(imported.studioJson(), "REST import", false);
+        ObjectNode saved = (ObjectNode) json.readTree(ModelTemplate.create(module));
+        // Exercise loading a native saved document with the exact REST shape, independently of the writer.
+        saved.set("configuration", configuration.deepCopy());
+        for (int pass = 0; pass < 3; pass++) {
+            module = ComponentIO.validatePersistedModuleJson(saved.toString(), "REST-shaped native model", false);
+            var importedFlow = module.getFlows().get(0);
+            var producer = importedFlow.getFlowRoute().getFlowElements().get(0);
+            assertThat(producer.getPropertyValue("priority")).isNull();
+            assertThat(producer.getPropertyValue("receiveTimeout")).isNull();
+            assertThat(producer.getPropertyValue("deliveryPersistent")).isEqualTo(false);
+            assertThat(producer.getPropertyValue("timeToLive")).isEqualTo(0L);
+            assertThat(FlowsComponentFactoryTemplate.create("org.example", module, importedFlow))
+                    .doesNotContain(".setPriority(", ".setReceiveTimeout(")
+                    .contains(".setDeliveryPersistent(", ".setTimeToLive(");
+            saved = (ObjectNode) json.readTree(ModelTemplate.create(module));
+            var record = java.util.stream.StreamSupport.stream(saved.path("configuration").spliterator(), false)
+                    .filter(node -> node.path("configurationId").asText().equals("Send-config")).findFirst().orElseThrow();
+            var priority = java.util.stream.StreamSupport.stream(record.path("parameters").spliterator(), false)
+                    .filter(node -> node.path("name").asText().equals("priority")).findFirst().orElseThrow();
+            assertThat(priority.has("value")).isFalse();
+            assertThat(priority.path("id").asInt()).isEqualTo(12);
+            assertThat(saved.path("studio").path("properties").path("ikasanRuntimeImport").path("configuration"))
+                    .isEqualTo(json.readTree(configuration.toString()));
+        }
+        var activeProducer = module.getFlows().get(0).getFlowRoute().getFlowElements().get(0);
+        activeProducer.setPropertyValue("priority", 7);
+        var configured = json.readTree(ModelTemplate.create(module));
+        assertThat(configured.path("configuration").get(1).path("parameters"))
+                .anySatisfy(parameter -> {
+                    assertThat(parameter.path("name").asText()).isEqualTo("priority");
+                    assertThat(parameter.path("value").asInt()).isEqualTo(7);
+                });
+        var configuredModule = ComponentIO.validatePersistedModuleJson(configured.toString(), "configured priority", false);
+        configuredModule.getFlows().get(0).getFlowRoute().getFlowElements().get(0).setPropertyValue("priority", null);
+        var cleared = json.readTree(ModelTemplate.create(configuredModule));
+        assertThat(cleared.path("configuration").get(1).path("parameters"))
+                .noneSatisfy(parameter -> {
+                    assertThat(parameter.path("name").asText()).isEqualTo("priority");
+                    assertThat(parameter.hasNonNull("value")).isTrue();
+                });
+        var producerRecord = (ObjectNode) saved.path("configuration").get(1);
+        var priority = (ObjectNode) java.util.stream.StreamSupport.stream(producerRecord.path("parameters").spliterator(), false)
+                .filter(node -> node.path("name").asText().equals("priority")).findFirst().orElseThrow();
+        priority.put("value", "not-an-integer");
+        String invalid = saved.toString();
+        assertThatThrownBy(() -> ComponentIO.validatePersistedModuleJson(invalid, "wrong type", false))
+                .hasMessageContaining("Invalid configuration value type for priority");
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
+    void recognisedWrapperVariationsNormalizeWithoutChangingSettingsOrInput(String pack) throws Exception {
+        ObjectNode legacy = (ObjectNode) json.readTree(fixture("populated_module.json"));
+        legacy.put("version", pack).put("applicationPackageName", "org.example.imported");
+        ObjectNode canonical = (ObjectNode) json.readTree(ModelTemplate.create(
+                ComponentIO.validatePersistedModuleJson(legacy.toString(), "wrapper baseline", false)));
+        ObjectNode properties = (ObjectNode) canonical.path("studio").path("properties");
+        properties.put("applicationPackageName", "org.example.imported").put("flowStartupType", "AUTOMATIC")
+                .put("h2DbPortNumber", "12451").put("h2WebPortNumber", "12452").put("useEmbeddedH2", true);
+        var report = json.createArrayNode().add("Review existing integration wiring.");
+        properties.withObject("/ikasanRuntimeImport").put("referenceMarker", "preserve-me").set("review", report);
+        var expectedModule = ComponentIO.validatePersistedModuleJson(canonical.toString(), "standard wrapper", false);
+        var expected = json.readTree(ModelTemplate.create(expectedModule));
+        ObjectNode reconstructed = canonical.deepCopy();
+        ObjectNode studio = (ObjectNode) reconstructed.path("studio");
+        ObjectNode settings = (ObjectNode) studio.path("properties");
+        studio.put("metaPack", pack.toLowerCase(java.util.Locale.ROOT));
+        for (String key : java.util.List.of("applicationPackageName", "flowStartupType", "h2DbPortNumber", "h2WebPortNumber", "useEmbeddedH2"))
+            studio.set(key, settings.remove(key));
+        studio.set("review", ((ObjectNode) settings.path("ikasanRuntimeImport")).remove("review"));
+        String source = reconstructed.toString();
+        IkasanModelDocuments.toLegacy(reconstructed);
+        assertThat(reconstructed.toString()).isEqualTo(source);
+        var loaded = ComponentIO.validatePersistedModuleJson(source, "reconstructed wrapper", false);
+        assertThat(json.readTree(ModelTemplate.create(loaded))).isEqualTo(expected);
+        assertThat(PropertiesTemplate.create(loaded)).isEqualTo(PropertiesTemplate.create(expectedModule));
+        assertThat(loaded.getVersion()).isEqualTo(pack);
+        assertThat(loaded.getApplicationPackageName()).isEqualTo("org.example.imported");
+        var saved = json.readTree(ModelTemplate.create(loaded));
+        assertThat(saved.at("/studio/properties/ikasanRuntimeImport/review")).isEqualTo(report);
+        assertThat(saved.at("/studio/properties/ikasanRuntimeImport/referenceMarker").asText()).isEqualTo("preserve-me");
+        assertThat(json.readTree(ModelTemplate.create(ComponentIO.validatePersistedModuleJson(saved.toString(), "normalized reload", false))))
+                .isEqualTo(saved);
+    }
+
+    @Test void wrapperNormalizationRejectsConflictsAndUnknownFieldsWithoutOverwriting() throws Exception {
+        ObjectNode baseline = (ObjectNode) json.readTree(ModelTemplate.create(
+                ComponentIO.validatePersistedModuleJson(fixture("populated_module.json"), "baseline", false)));
+        for (String key : java.util.List.of("applicationPackageName", "flowStartupType", "h2DbPortNumber", "h2WebPortNumber", "useEmbeddedH2")) {
+            ObjectNode input = baseline.deepCopy();
+            ((ObjectNode) input.path("studio").path("properties")).put(key, "existing-setting");
+            ((ObjectNode) input.path("studio")).put(key, "different-setting");
+            String source = input.toString();
+            assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("Conflicting Studio metadata field " + key)
+                    .hasMessageNotContaining("existing-setting").hasMessageNotContaining("different-setting");
+            assertThat(input.toString()).isEqualTo(source);
+        }
+        ObjectNode equalSettings = baseline.deepCopy();
+        ((ObjectNode) equalSettings.path("studio").path("properties")).put("h2DbPortNumber", "12451");
+        ((ObjectNode) equalSettings.path("studio")).put("h2DbPortNumber", "12451");
+        assertThat(IkasanModelDocuments.toLegacy(equalSettings).path("h2DbPortNumber").asText()).isEqualTo("12451");
+        ObjectNode input = baseline.deepCopy();
+        var studio = (ObjectNode) input.path("studio");
+        var properties = (ObjectNode) studio.path("properties");
+        var report = json.createArrayNode().add("existing-report");
+        properties.withObject("/ikasanRuntimeImport").set("review", report);
+        studio.set("review", report.deepCopy());
+        // Equal duplicates are safe; differing reports must never overwrite each other.
+        assertThat(IkasanModelDocuments.toLegacy(input).path("ikasanRuntimeImport").path("review")).isEqualTo(report);
+        studio.putArray("review").add("different-report");
+        assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("Conflicting Studio metadata field review");
+        studio.remove("review");
+        studio.put("unknownFutureMetadata", true);
+        assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("Unknown document metadata field unknownFutureMetadata");
+        studio.remove("unknownFutureMetadata");
+        studio.put("metaPack", "v4.1.3");
+        assertThatThrownBy(() -> IkasanModelDocuments.toLegacy(input)).hasMessageContaining("requires meta-pack v4.1.3");
     }
 
     @Test void nativeExtensionsFollowRenamesAndStayOutOfStudioProperties() throws Exception {

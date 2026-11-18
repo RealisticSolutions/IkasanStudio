@@ -42,11 +42,13 @@ Maintained by **Realistic Solutions**. Contact [community support](mailto:suppor
 Ikasan Studio is open source under the [BSD 3-Clause License](https://github.com/RealisticSolutions/IkasanStudio/blob/main/LICENSE.txt); [browse the source code](https://github.com/RealisticSolutions/IkasanStudio).
 <!-- Plugin description end -->
 
-**Release status:** Preparing the first Realistic Solutions community beta. No community Marketplace release has been submitted from this checkout. See [community beta preparation](docs/CommunityBetaRelease.md) for identity decisions, candidate checks and publication prerequisites.
+**Builds:** Compare [beta and nightly features](docs/Features.md). [Nightly ZIPs](downloads/) are updated in this repository and installed through IntelliJ’s **Install Plugin from Disk**.
 
-[Get started](#get-started) · [Documentation](#documentation) · [Build and contribute](#build-and-contribute) · [Report a problem](#report-a-problem)
+[Get started](#get-started) · [Feature matrix](docs/Features.md) · [Documentation](#documentation) · [Build and contribute](#build-and-contribute) · [Report a problem](#report-a-problem)
 
 ## What you can do
+
+See the [complete feature matrix](docs/Features.md) for capabilities grouped by function, with **Beta** and **Nightly** availability. [Nightly ZIPs](downloads/) are updated in this repository; Ikasan 5 support and the latest source-import workflow are nightly features.
 
 - Design flows with a component palette, property editor and visual connections in IntelliJ's main editor area.
 - Generate application code and configuration while keeping business logic in developer-owned source files.
@@ -83,7 +85,7 @@ Studio helps with integration structure and repetitive implementation work. Appl
 | IntelliJ IDEA                  | Minimum 2024.2, platform build 242 |
 | Plugin compilation/test target | IDEA Community 2024.3.7            |
 | Configured binary verification | IDEA 2024.2, 2024.3.7 and 2026.2.2 |
-| Bundled Ikasan meta-packs      | V3.3.9 and V4.1.6                  |
+| Default Ikasan meta-packs      | V3.3.9, V4.1.6 and V5.1.0 (JDK 25); optional historical [V5 snapshot](docs/SnapshotMetaPacks.md) for developers |
 | Generated V3.3.9 application   | Java 11                            |
 | Generated V4.1.6 application   | Java 17                            |
 
@@ -93,7 +95,7 @@ See [Supported versions](docs/SupportedVersions.md) and [Known limitations](docs
 
 ### Install and create a module
 
-1. Follow the [installation guide](docs/Installation.md) for Marketplace beta access or installation from a candidate ZIP. Until publication, obtain a candidate ZIP or [build the plugin](#build-and-contribute).
+1. Follow the [installation guide](docs/Installation.md) for Marketplace beta access or installation from a candidate ZIP. For nightly features, use the [GitHub ZIP](downloads/ikasanstudio-1.0.0-beta.1.zip) or [build the plugin](#build-and-contribute).
 2. Create a **Maven Archetype** project using `org.ikasan.studio:ikasan-studio-project-archetype` and the version supplied for your candidate. If it is unavailable in your configured repositories, use the [manual archetype fallback](#manual-archetype-fallback).
 3. Allow Maven import and indexing to finish. Studio opens in an editor tab; select the appropriate Ikasan pack and configure the module.
 4. Add a flow, a consumer and the remaining components. Apply their properties, then use the **Regenerate Code** icon in the Module controls to generate from the current in-memory model.
@@ -133,6 +135,7 @@ Studio validates proposals and applies them according to its approval settings. 
 
 | Guide                                                                   | Read it for                                                                                  |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [Feature matrix](docs/Features.md)                                     | Capabilities by functional area, with beta/nightly availability                              |
 | [Getting started](docs/GettingStarted.md)                               | Create, configure, run and debug your first module                                           |
 | [Video tutorials](tutorials/README.md)                                  | Recommended viewing order for module development and Studio contribution                     |
 | [Generated verification baselines](docs/GeneratedVerification.md)       | Model-based checks and frozen baselines for migration comparisons                            |
@@ -164,6 +167,7 @@ Studio validates proposals and applies them according to its approval settings. 
 | [Headless generator and test kit](headless/README.md)                             | Standalone modules, source ownership and build commands            |
 | [Meta-pack authoring](src/main/resources/studio/metapack/METAPACK.md)             | Manifests, descriptors, templates and pack lifecycle               |
 | [Meta-pack compliance](src/main/resources/studio/metapack/METAPACK_COMPLIANCE.md) | Required metadata, dependencies and verification                   |
+| [Custom meta-pack handover](docs/CustomMetaPackHandover.md) | Starting a separate pack project, acceptance and Studio delivery |
 | [Independent pack artifacts](docs/IndependentMetaPackArtifacts.md)                | Pack versioning, compatibility and publication commands            |
 | [Engine and meta-pack testing](docs/TestingEngineAndMetaPacks.md)                 | Test ownership, focused suites and expected outputs                |
 | [Architecture boundary tests](docs/ArchitectureBoundaryTests.md)                  | Dependency rules and how to address violations                     |
@@ -228,7 +232,7 @@ To package while another sandbox is running, use `./gradlew buildPlugin -Pstudio
 | `ikasan-studio-ancillary/`                             | Separately versioned Maven archetype and IDE mediator                          |
 | `src/test/java/`, `src/testHarness/java/`              | Root automated tests and the separate visual harness suite                     |
 
-The root Gradle build includes `headless/` as a composite build. Core generation is shared by the plugin and standalone consumers. Meta-packs adapt the version-neutral model to specific Ikasan APIs; adding a pack requires packaging and contract validation, not just a new resource directory. The standalone migration CLI shares this engine and can be exported through **Tools → Ikasan Studio → Export Offline Migration Tools…**; see [command-line migration and verification](docs/CommandLineMigration.md). A downloadable meta-pack marketplace is not currently provided.
+The root Gradle build includes `headless/` as a composite build. Core generation is shared by the plugin and standalone consumers. Meta-packs adapt the version-neutral model to specific Ikasan APIs; adding a pack requires packaging and contract validation, not just a new resource directory. The standalone migration CLI shares this engine and can be exported through **Tools → Ikasan Studio → Export Offline Migration Tools…**; see [command-line migration and verification](docs/CommandLineMigration.md). Complete custom meta-pack JARs can be installed through **Tools → Ikasan Studio → Install Meta-Pack…**, with activation after an IDE restart; see the [handover](docs/CustomMetaPackHandover.md#install-into-studio). External updates/removal/rollback are available through **Manage Meta-Packs…**. Offline tools exports include the saved project’s required custom pack, with revision/checksum checks and standalone validation/rendering commands. Saved model revision locks protect against unintended pack changes. A public meta-pack marketplace, component overlays and concurrent revisions of the same pack ID are not currently provided.
 
 ### Manual archetype fallback
 

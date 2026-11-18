@@ -105,6 +105,36 @@ public class Module extends BasicElement {
         return module;
     }
 
+    @JsonIgnore
+    private final java.util.Map<String, Object> automaticH2Defaults = new java.util.HashMap<>();
+
+    @Override public void defaultUnsetMandatoryProperties() {
+        var missing = java.util.List.of(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME, ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME)
+                .stream().filter(key -> getPropertyValueAsString(key).isBlank()).toList();
+        super.defaultUnsetMandatoryProperties();
+        for (String key : missing) if (getPropertyValue(key) != null) automaticH2Defaults.put(key, getPropertyValue(key));
+    }
+
+    public boolean hasAutomaticH2Default(String key) {
+        return automaticH2Defaults.containsKey(key) && Objects.equals(automaticH2Defaults.get(key), getPropertyValue(key));
+    }
+
+    /** Defaults are computed once when requested; ordinary HTTP edits never rewrite H2 settings. */
+    @Override public Object defaultPropertyValue(String key) {
+        int offset = ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME.equals(key) ? 1
+                : ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME.equals(key) ? 2 : 0;
+        if (offset == 0) return super.defaultPropertyValue(key);
+        String http = getPort();
+        if (http == null || http.isBlank()) http = Objects.toString(super.defaultPropertyValue(ComponentPropertyMeta.APPLICATION_PORT_NUMBER_NAME), "");
+        return derivedH2Port(http, offset);
+    }
+
+    public static String derivedH2Port(String http, int offset) {
+        if (http == null || !http.matches("[0-9]{1,5}") || offset < 1 || offset > 2) return null;
+        int port = Integer.parseInt(http);
+        return port >= 1 && port + offset <= 65535 ? Integer.toString(port + offset) : null;
+    }
+
     public boolean addFlow(Flow ikasanFlow) {
         return flows.add(ikasanFlow);
     }
@@ -128,6 +158,7 @@ public class Module extends BasicElement {
     }
     @JsonIgnore
     public void setH2DbPortNumber(String portNumber) {
+        automaticH2Defaults.remove(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME);
         this.setPropertyValue(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME, portNumber);
     }
     public String getH2WebPortNumber() {
@@ -135,6 +166,7 @@ public class Module extends BasicElement {
     }
     @JsonIgnore
     public void setH2WebPortNumber(String portNumber) {
+        automaticH2Defaults.remove(ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME);
         this.setPropertyValue(ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME, portNumber);
     }
     @JsonIgnore

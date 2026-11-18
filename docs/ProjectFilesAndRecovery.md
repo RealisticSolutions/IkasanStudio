@@ -33,6 +33,94 @@ flowchart TB
 
 Existing user implementations are protected; replacing them requires explicit approval. Model backups and migration snapshots serve different recovery needs, described below.
 
+## Component settings per environment
+
+For both bundled Ikasan versions, configured scalar and string-map settings for email, JMS,
+FTP/SFTP, local-file and scheduled consumers, logging producers and the XML converter
+are generated into `generated/src/main/resources/application.properties`. Email settings
+include recipients (single addresses and lists), sender, subject, body/format and server
+connection settings. The component factory reads those values through Spring. Existing
+property keys are retained for compatibility; new keys include the flow and component names
+so different components can use different settings. For example:
+
+```properties
+routerflow.output2.email.producer.toRecipient=bar@bar.com
+routerflow.output2.email.producer.mailSmtpHost=smtp.example.com
+routerflow.output2.email.producer.mailSmtpPort=25
+```
+
+Use Studio properties for the generated defaults. Use an external Spring configuration file
+or a profile-specific configuration for deployment overrides; direct edits to generated
+defaults can be replaced on regeneration. Unset optional settings are not generated.
+To adopt this in an existing project, load the updated plugin and regenerate the application
+code and properties. Refresh flow-test support/properties if the tests need the new override
+keys; changing only the test scaffolding does not regenerate the application factory.
+
+Custom configuration beans, connection factories, message providers, adapters and other
+Java implementations remain bean/class references. Their behaviour and custom fields cannot
+be replaced by a scalar properties entry. Configuration resource identifiers also remain
+part of the model's identity. Studio does not overwrite these developer-owned classes.
+
+JMS JNDI maps use the structured string-map editor and JSON object values in the properties
+file, with one string value per key. Generated factories parse these maps before calling
+the builder; Java variable names or expressions are not map configuration values.
+
+## Import local configuration
+
+Choose **Tools → Ikasan Studio → Import Configuration…**, then choose a properties file
+or paste properties to be added. Files use ISO-8859-1 with Unicode escapes; pasted Unicode
+is escaped for Spring Boot. Source import can also supply discovered properties files.
+
+The file row shows the original file (or **Pasted properties**), the action and the destination:
+`user/src/main/resources/studio-local.properties`.
+
+- **Copy all** stages the complete input for import. **Revert** discards that pending selection.
+- Double-click an entry or press Enter to open the original on the left and an editable
+  destination preview on the right. Copy selected differences or edit the preview, then choose
+  **Save preview**. **Cancel** leaves the pending import unchanged.
+- **Import Configuration** writes the explicitly selected contents. Editing or loading new input
+  clears the previous selection. Cancelling the import writes nothing.
+
+Existing destination contents are replaced only after **Copy all** or **Save preview** explicitly
+selects them. There is no implicit merge: properties omitted from the selected destination text
+are removed from that file. A destination or generated application configuration changed since
+comparison blocks import; use **Revert** and compare again.
+
+The imported file is developer-owned, survives regeneration, and is packaged as a normal
+resource of the `user` Maven module. Studio does not add it to `.gitignore`; handle sensitive
+values through placeholders and the project's normal configuration practices. Generated
+`application.properties` imports it with `optional:classpath:studio-local.properties`, alongside
+the separate generated harness settings. This uses distinct resource names so the developer
+file does not hide the generated `application.properties`.
+
+Import adds the optional resource import to an existing generated application configuration,
+preserving other properties and imports in the same stale-checked write transaction. Future
+generation includes it automatically. If the application has not yet been generated, import
+retains the developer file for the later generation step. Nonstandard multiline import entries
+require regeneration before import rather than an unsafe rewrite.
+
+Studio prepares ordinary local IntelliJ Application Run/Debug configurations, preserving the
+selected harness combination. These use classpath configuration without selecting environment
+profiles or external configuration directories. Existing external configuration files and saved
+launch configurations are retained. External files and environment variables retain normal
+Spring Boot precedence. Settings take effect on the next launch and do not reset
+persisted Ikasan configuration.
+
+Only the selected destination text must pass properties validation. Duplicate keys, malformed
+escapes, multi-document input and `spring.profiles.*` / `spring.config.*` launch controls are
+rejected before writing. The original comparison may contain such controls: leave them out of
+the destination preview. Comments, placeholders and the destination's line-ending style are
+retained. Placeholders remain unresolved in Studio.
+
+Harness connection overrides are separate from this import. Use the **Harness overrides** cog
+to enable them per component for a launch while retaining imported and configured values.
+See [mixing harness and configured connections](Harnesses.md#mix-harness-and-configured-connections).
+
+Properties do not reconstruct bespoke Java implementations, dependencies or Spring wiring,
+and choosing an environment does not clear Ikasan's persisted configuration-service
+settings. Console navigation still uses the module settings: align its configured port
+and context path when overriding those values externally.
+
 ## Renaming a flow
 
 Change the flow name in Properties and choose **Update Code**. If its Java package changes, **Rename and refactor** shows the old/new package and affected files. Studio uses IntelliJ package refactoring to retain implementations, helper classes and subpackages, update Java references, and update its default Spring bean names and matching `@Resource`/`@Qualifier` references. Custom bean names are preserved. The model is saved before generated code and navigation are refreshed. Class names are retained; renaming a flow does not require renaming each implementation class.
@@ -54,9 +142,35 @@ Studio validates the candidate and existing model, writes a temporary sibling an
 1. Copy the project, including the original model and backups, before manual repairs. Stop the module and avoid concurrent Studio sessions writing the same project.
 2. Open Studio. If the model cannot load safely, the recovery view preserves the original and offers only backups that validate.
 3. Select the desired validated backup. Studio restores it and preserves the rejected model as `model.json.rejected.<timestamp>.<id>`.
-4. If no valid backup exists, restore the model from version control or repair a copy, then use **Reload from Disk**. The normal toolbar reload control is available through advanced controls in **Settings → Tools → Ikasan Studio**.
+4. For a missing or mismatched pack, use **Review model repair…** in the recovery view (also under **Tools → Ikasan Studio**). Review the proposed pack, revision, runtime and JDK before applying. If no validated repair is available, restore the model from version control or repair a copy, then use **Reload from Disk**. The normal toolbar reload control is available through advanced controls in **Settings → Tools → Ikasan Studio**.
 5. Inspect the restored flows, component settings and selected pack before generation. Review generated file diffs and run application tests. Restoring a model does not automatically restore matching developer Java, external databases or delivered messages.
 
 For a failed version migration, follow [migration snapshot restoration](IkasanVersionMigration.md#restore-versus-migrate-back). Do not replace only the model while leaving the project POM and generated Java on another Ikasan version.
 
 Models, adjacent backups and migration snapshots can contain entered credentials and endpoint details. Apply the same access controls and sharing review to backups as to the project. Use your team's secret-management conventions and do not commit actual credentials.
+
+
+## Meta-pack revision mismatch
+
+New saves of configured document-format models include `studio.metaPackRevision`. If the installed pack has another revision, Studio preserves the file and blocks loading/saving rather than silently changing its metadata and generation templates. Older documents without a lock are still accepted and gain one on save.
+
+Restore the required external revision through **Tools → Ikasan Studio → Manage Meta-Packs…** and restart, or review **Adopt Installed Meta-Pack Revision…** to explicitly update the model lock. Adoption validates the model with the installed revision, keeps the original as `model.json.bak.1`, and requires a fresh review if the file changes. Regenerate, inspect and test application output afterwards. A model backup locked to an unavailable revision also needs that revision restored. See [meta-pack lifecycle and locks](CustomMetaPackHandover.md#project-revision-locks-and-deliberate-adoption).
+
+## Reviewed model repair
+
+**Review Model Repair…** handles an installed pack revision mismatch and the retired
+V5.0.1-SNAPSHOT → V5.1.0 transition. The preview validates the entire proposed model
+and renders application templates in memory before offering an Apply confirmation.
+It changes only the model’s pack ID, revision and runtime identity as needed; flows,
+component configuration, provenance and developer code are preserved.
+
+Stop the module and save open project files before applying. The original model is
+retained exactly as `model.json.bak.1`; a stale review or failed validation prevents
+replacement. Studio reloads the repaired model before allowing normal saves. Then
+regenerate code, reload Maven and build/test against the selected runtime and JDK.
+The preview checks model/template compatibility, not runtime delivery or Java compilation.
+
+Repair does not infer arbitrary version migrations, replace missing custom packs,
+or guess fixes for malformed JSON or invalid component settings. Restore a validated
+backup or install the required external pack for those cases. Existing explicit
+revision adoption remains available under Tools.

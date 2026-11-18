@@ -18,7 +18,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 /** Structural and referential validation for the contents of a loaded meta-pack. */
 final class MetaPackDataValidator {
@@ -35,12 +34,12 @@ final class MetaPackDataValidator {
 
     private MetaPackDataValidator() { }
 
-    static void validate(String pack, Map<String, ComponentMeta> components) throws StudioBuildException {
+    static void validate(String pack, String ikasanVersion, Map<String, ComponentMeta> components, int generatorApi) throws StudioBuildException {
         List<String> problems = new ArrayList<>();
         if (components == null || components.isEmpty()) {
             problems.add("library: contains no valid components");
         } else {
-            validateContents(pack, components, problems);
+            validateContents(pack, "V" + ikasanVersion, components, problems, generatorApi);
         }
         if (!problems.isEmpty()) {
             throw new StudioBuildException("Meta-pack " + pack + " contains invalid metadata:\n - "
@@ -48,7 +47,7 @@ final class MetaPackDataValidator {
         }
     }
 
-    private static void validateContents(String pack, Map<String, ComponentMeta> components, List<String> problems) {
+    private static void validateContents(String pack, String platform, Map<String, ComponentMeta> components, List<String> problems, int generatorApi) {
         Set<ComponentTypeMeta> checkedTypes = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
         Map<Integer, String> paletteOrders = new HashMap<>();
         Map<String, String> identities = new HashMap<>();
@@ -64,11 +63,57 @@ final class MetaPackDataValidator {
             method(problems, path + ".ikasanComponentFactoryMethod", component.getIkasanComponentFactoryMethod());
             help(problems, path + ".helpText", component.getHelpText());
             url(problems, pack, path + ".webHelpURL", component.getWebHelpURL());
+            javaName(problems, path + ".runtimeImplementingClass", component.getRuntimeImplementingClass());
+            namespace(problems, platform, path + ".runtimeImplementingClass", component.getRuntimeImplementingClass());
             types(problems, path + ".expectedInputTypes", component.getExpectedInputTypes());
             type(problems, path + ".producedOutputType", component.getProducedOutputType());
-            namespace(problems, pack, path + ".implementingClass", component.getImplementingClass());
-            namespace(problems, pack, path + ".expectedInputTypes", component.getExpectedInputTypes());
-            namespace(problems, pack, path + ".producedOutputType", component.getProducedOutputType());
+            namespace(problems, platform, path + ".implementingClass", component.getImplementingClass());
+            namespace(problems, platform, path + ".expectedInputTypes", component.getExpectedInputTypes());
+            namespace(problems, platform, path + ".producedOutputType", component.getProducedOutputType());
+            if (component.getRuntimeConfigurationMappings() == null) {
+                add(problems, path + ".runtimeConfigurationMappings", "must be an object, not null");
+            } else {
+                Set<String> mappedProperties = new HashSet<>();
+                for (var mapping : component.getRuntimeConfigurationMappings().entrySet()) {
+                    if (mapping.getKey() == null || !JAVA_IDENTIFIER.matcher(mapping.getKey()).matches()
+                            || mapping.getValue() == null || mapping.getKey().equals(mapping.getValue())
+                            || component.getRuntimeConfigurationProperties() == null
+                            || !component.getRuntimeConfigurationProperties().contains(mapping.getValue())
+                            || !mappedProperties.add(mapping.getValue()))
+                        add(problems, path + ".runtimeConfigurationMappings", "must map differing REST names one-to-one to declared runtimeConfigurationProperties");
+                }
+                if (component.getRuntimeConfigurationProperties() != null
+                        && component.getRuntimeConfigurationMappings().values().stream().allMatch(Objects::nonNull)) {
+                    Set<String> names = new HashSet<>();
+                    for (String property : component.getRuntimeConfigurationProperties())
+                        if (!names.add(component.runtimeConfigurationName(property)))
+                            add(problems, path + ".runtimeConfigurationMappings", "must not shadow an exact runtime parameter name");
+                }
+            }
+            if (component.getLegacyPropertyAliases() == null) {
+                add(problems, path + ".legacyPropertyAliases", "must be an object, not null");
+            } else for (var alias : component.getLegacyPropertyAliases().entrySet()) {
+                var properties = component.getAllowableProperties();
+                if (alias.getKey() == null || !JAVA_IDENTIFIER.matcher(alias.getKey()).matches()
+                        || properties == null || properties.containsKey(alias.getKey())
+                        || alias.getValue() == null || !properties.containsKey(alias.getValue()))
+                    add(problems, path + ".legacyPropertyAliases", "must map historical names to existing canonical properties without shadowing properties or alias chains");
+            }
+            if (component.getRuntimeConfigurationDefaults() == null) {
+                add(problems, path + ".runtimeConfigurationDefaults", "must be an object, not null");
+            } else {
+                for (var entryDefault : component.getRuntimeConfigurationDefaults().entrySet()) {
+                    if (entryDefault.getKey() == null || !JAVA_IDENTIFIER.matcher(entryDefault.getKey()).matches()
+                            || entryDefault.getValue() == null || entryDefault.getValue().isNull())
+                        add(problems, path + ".runtimeConfigurationDefaults", "requires parameter names and non-null JSON defaults");
+                }
+                if (!component.getRuntimeConfigurationDefaults().isEmpty()) {
+                    var configuration = component.getAllowableProperties() == null ? null : component.getAllowableProperties().get("configuration");
+                    if ((component.getRuntimeConfigurationClass() == null || component.getRuntimeConfigurationClass().isBlank())
+                            && (configuration == null || configuration.getUsageDataType() == null || configuration.getUsageDataType().isBlank()))
+                        add(problems, path + ".runtimeConfigurationDefaults", "requires runtimeConfigurationClass or the configuration property's usageDataType");
+                }
+            }
             if (component.getRuntimeConfigurationProperties() == null) {
                 add(problems, path + ".runtimeConfigurationProperties", "must be an array, not null");
             } else if (!component.getRuntimeConfigurationProperties().isEmpty()) {
@@ -94,11 +139,11 @@ final class MetaPackDataValidator {
             if (component.getEndpointKey() != null && !component.getEndpointKey().isBlank() && !components.containsKey(component.getEndpointKey())) {
                 add(problems, path + ".endpointKey", "references unknown component " + component.getEndpointKey());
             }
-            if (component.getEndpointTextKey() != null && !component.getEndpointTextKey().isBlank() && !component.getAllowableProperties().containsKey(component.getEndpointTextKey())) {
+            if (component.getEndpointTextKey() != null && !component.getEndpointTextKey().isBlank() && (component.getAllowableProperties() == null || !component.getAllowableProperties().containsKey(component.getEndpointTextKey()))) {
                 add(problems, path + ".endpointTextKey", "references unknown property " + component.getEndpointTextKey());
             }
             if (component.getImportConfigurationClasses() != null) {
-                for (String imported : component.getImportConfigurationClasses()) { javaName(problems, path + ".importConfigurationClasses", imported); namespace(problems, pack, path + ".importConfigurationClasses", imported); }
+                for (String imported : component.getImportConfigurationClasses()) { javaName(problems, path + ".importConfigurationClasses", imported); namespace(problems, platform, path + ".importConfigurationClasses", imported); }
             }
             if (component.getImportResources() != null) {
                 for (String imported : component.getImportResources()) if (imported == null || !imported.startsWith("classpath:")) add(problems, path + ".importResources", "must use a classpath: resource: " + imported);
@@ -106,13 +151,24 @@ final class MetaPackDataValidator {
 
             ComponentTypeMeta category = component.getComponentTypeMeta();
             if (category == null) add(problems, path, "has no component category");
-            else if (checkedTypes.add(category)) category(category, path, paletteOrders, problems);
+            else if (checkedTypes.add(category)) category(category, path, paletteOrders, problems, generatorApi);
 
             String identity = ComponentLibrary.getDeserialisationKey(component);
             String previous = identities.putIfAbsent(identity, component.getName());
             if (previous != null) add(problems, path, "duplicates deserialisation identity of '" + previous + "': " + identity);
 
-            properties(pack, component, path, problems);
+            properties(pack, platform, component, path, problems, generatorApi);
+            if (component instanceof org.ikasan.studio.core.metapack.model.ExceptionResolverMeta resolver
+                    && resolver.getActionList() != null) {
+                for (int i = 0; i < resolver.getActionList().size(); i++) {
+                    var action = resolver.getActionList().get(i);
+                    if (action == null || action.getActionProperties() == null) continue;
+                    for (var property : action.getActionProperties().entrySet()) {
+                        if (property.getValue() != null) validationRule(property.getValue(),
+                                path + ".actionList[" + i + "].actionProperties." + property.getKey(), problems, generatorApi);
+                    }
+                }
+            }
             recipes(pack, component, path, problems);
             if (category != null && !component.isEndpoint()) {
                 resource(problems, path + ".smallIcon", component.getIconResourceDirectory() + "/small.png");
@@ -122,7 +178,7 @@ final class MetaPackDataValidator {
     }
 
     private static void category(ComponentTypeMeta category, String owner, Map<Integer, String> orders,
-                                 List<String> problems) {
+                                 List<String> problems, int generatorApi) {
         String path = owner + " category";
         required(problems, path + ".componentShortType", category.getComponentShortType());
 
@@ -136,9 +192,32 @@ final class MetaPackDataValidator {
             }
         }
         help(problems, path + ".helpText", category.getHelpText());
+        if (category.getAllowableProperties() != null) {
+            for (var property : category.getAllowableProperties().entrySet()) {
+                if (property.getValue() != null) validationRule(property.getValue(),
+                        path + ".allowableProperties." + property.getKey(), problems, generatorApi);
+            }
+        }
     }
 
-    private static void properties(String pack, ComponentMeta component, String path, List<String> problems) {
+    private static void validationRule(ComponentPropertyMeta property, String propertyPath,
+                                       List<String> problems, int generatorApi) {
+        if (property.getValidation() != null && !property.getValidation().isBlank()) {
+            try {
+                property.getValidationPattern();
+            } catch (IllegalArgumentException e) {
+                add(problems, propertyPath + ".validation", "unsupported RE2/J validation expression: " + e.getMessage()
+                        + ". Use RE2/J syntax without lookaround, backreferences or possessive quantifiers; use validationKind JAVA_PACKAGE for Java package names.");
+            }
+        }
+        if (property.getValidationKind() != null && !property.getValidationKind().isBlank() && generatorApi < 2)
+            add(problems, propertyPath + ".validationKind", "requires generatorApiVersion 2 in metapack.json");
+        if (property.getValidationKind() != null && !property.getValidationKind().isBlank()
+                && !ComponentPropertyMeta.JAVA_PACKAGE.equals(property.getValidationKind()))
+            add(problems, propertyPath + ".validationKind", "unsupported rule; supported value is JAVA_PACKAGE");
+    }
+
+    private static void properties(String pack, String platform, ComponentMeta component, String path, List<String> problems, int generatorApi) {
         Map<String, ComponentPropertyMeta> properties = component.getAllowableProperties();
         if (properties == null) { add(problems, path + ".allowableProperties", "is required"); return; }
         Map<String, String> displayOrders = new HashMap<>();
@@ -151,11 +230,8 @@ final class MetaPackDataValidator {
             help(problems, propertyPath + ".helpText", property.getHelpText());
             method(problems, propertyPath + ".setterMethod", property.getSetterMethod());
             type(problems, propertyPath + ".usageDataType", property.getUsageDataType());
-            namespace(problems, pack, propertyPath + ".usageDataType", property.getUsageDataType());
-            if (property.getValidation() != null && !property.getValidation().isBlank()) {
-                try { Pattern.compile(property.getValidation()); }
-                catch (PatternSyntaxException e) { add(problems, propertyPath + ".validation", "invalid regular expression: " + e.getMessage()); }
-            }
+            namespace(problems, platform, propertyPath + ".usageDataType", property.getUsageDataType());
+            validationRule(property, propertyPath, problems, generatorApi);
             references(properties, propertyPath + ".mandatoryUnlessAnyOf", property.getMandatoryUnlessAnyOf(), problems);
             references(properties, propertyPath + ".mandatoryIfTrue",
                     property.getMandatoryIfTrue() == null ? List.of() : List.of(property.getMandatoryIfTrue()), problems);
@@ -255,16 +331,24 @@ final class MetaPackDataValidator {
             if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) add(problems, path, "must be an absolute HTTPS URL");
             String release = pack.startsWith("V") ? pack.substring(1) : pack;
             if (pack.matches("V\\d.*") && "github.com".equalsIgnoreCase(uri.getHost()) && value.contains("/ikasanEIP/ikasan/blob/")
-                    && !value.contains("/blob/ikasaneip-" + release + "/")) {
+                    && !value.contains("/blob/ikasaneip-" + release + "/")
+                    && !isPinnedDevelopmentHelp(pack, uri.getPath())) {
                 add(problems, path, "must reference the exact Ikasan tag ikasaneip-" + release);
             }
         } catch (URISyntaxException e) { add(problems, path, "invalid URL: " + e.getMessage()); }
     }
 
+    // Snapshot releases have no immutable release tag yet. Permit a full source commit,
+    // never a moving branch or short SHA; released packs still require their exact tag.
+    static boolean isPinnedDevelopmentHelp(String pack, String path) {
+        return pack.endsWith("-SNAPSHOT") && path != null
+                && path.matches("/ikasanEIP/ikasan/blob/[0-9a-f]{40}/.+");
+    }
+
     private static void namespace(List<String> problems, String pack, String path, String value) {
         if (value == null) return;
-        if (pack.startsWith("V4") && (value.contains("javax.jms") || value.contains("javax.resource") || value.contains("javax.xml.bind")))
-            add(problems, path, "uses a pre-Jakarta class in an Ikasan 4 meta-pack: " + value);
+        if ((pack.startsWith("V4") || pack.startsWith("V5")) && (value.contains("javax.jms") || value.contains("javax.resource") || value.contains("javax.xml.bind")))
+            add(problems, path, "uses a pre-Jakarta class in an Ikasan 4/5 meta-pack: " + value);
         if (pack.startsWith("V3") && (value.contains("jakarta.jms") || value.contains("jakarta.resource") || value.contains("jakarta.xml.bind")))
             add(problems, path, "uses a Jakarta class in an Ikasan 3 meta-pack: " + value);
     }
@@ -275,7 +359,7 @@ final class MetaPackDataValidator {
 
     private static boolean missing(String resource) {
         return resource == null || resource.startsWith("null/")
-                || MetaPackDataValidator.class.getClassLoader().getResource(resource) == null;
+                || org.ikasan.studio.core.metapack.loading.MetaPackResources.resource(resource) == null;
     }
 
     private static void required(List<String> problems, String path, String value) {

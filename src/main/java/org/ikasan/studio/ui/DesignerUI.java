@@ -41,7 +41,13 @@ public class DesignerUI implements Disposable {
     private final StudioProjectInitialisationService initialisationService;
     JBTabbedPane paletteAndProperties = new JBTabbedPane();
     JBSplitter propertiesAndCanvasSplitPane;
+    public void showProperties() {
+        sidebarVisibility.show();
+        project.getService(UiContext.class).setRightTabbedPaneFocus(UiContext.PROPERTIES_TAB_INDEX);
+    }
+
     private final PanelWidthToggle panelWidthToggle;
+    private final SidebarVisibilityToggle sidebarVisibility;
     // Guards the persistence listener below against our own programmatic proportion changes -
     // without this, restoring a persisted width while the split pane hasn't yet been laid out to its
     // real size (getWidth() still small/stale during early startup) computes a wrong divider location,
@@ -57,8 +63,11 @@ public class DesignerUI implements Disposable {
     public DesignerUI(Project project) {
         this.project = project;
         this.initialisationService = project.getService(StudioProjectInitialisationService.class);
-        this.initialisationPanel = new StudioInitialisationPanel(initialisationService::start, initialisationService::restoreModelBackup);
-        project.getMessageBus().connect(this).<StudioProjectInitialisationService.Listener>subscribe(
+        this.initialisationPanel = new StudioInitialisationPanel(initialisationService::start,
+                initialisationService::restoreModelBackup,
+                () -> org.ikasan.studio.intellij.metapack.RepairModelAction.review(project),
+                initialisationService::reloadMavenProject);
+        project.getMessageBus().connect(this).subscribe(
                 StudioProjectInitialisationService.Listener.TOPIC,
                 this::initialisationStateChanged);
         project.getService(UiContext.class).setViewHandlerFactory(new ViewHandlerCache(this.project));
@@ -88,7 +97,8 @@ public class DesignerUI implements Disposable {
         Disposer.register(this, canvasPanel);
         uiContext.setCanvasPanel(canvasPanel);
         propertiesAndCanvasSplitPane = createContentSplitter(canvasPanel, paletteAndProperties);
-        canvasPanel.setSidebarToggle(new SidebarVisibilityToggle(propertiesAndCanvasSplitPane, paletteAndProperties).button());
+        sidebarVisibility = new SidebarVisibilityToggle(propertiesAndCanvasSplitPane, paletteAndProperties);
+        canvasPanel.setSidebarToggle(sidebarVisibility.button());
         panelWidthToggle = new PanelWidthToggle(propertiesAndCanvasSplitPane, paletteAndProperties, restore -> {
             componentPropertiesPanel.setRestoreWidthAvailable(restore);
             PaletteTabPanel palette = uiContext.getPalettePanel();
@@ -253,6 +263,7 @@ public class DesignerUI implements Disposable {
             return;
         }
         try {
+            uiContext.getDesignerCanvas().setAvailableMetaPacks(initialisationService.getAvailableMetaPacks(), initialisationService.getSnapshotMetaPacks());
             PaletteTabPanel paletteTabPanel = uiContext.getPalettePanel();
             if (paletteTabPanel == null) {
                 paletteTabPanel = new PaletteTabPanel(project);
@@ -304,7 +315,7 @@ public class DesignerUI implements Disposable {
             contentLayout.show(contentPanel, state == StudioProjectInitialisationService.State.READY
                     ? DESIGNER_CARD : INITIALISING_CARD);
             switch (state) {
-                case WAITING_FOR_PROJECT_IMPORT -> initialisationPanel.showWaitingForProjectImport();
+                case WAITING_FOR_PROJECT_IMPORT -> initialisationPanel.showWaitingForProjectImport(detail);
                 case WAITING_FOR_INDEXES -> initialisationPanel.showWaitingForIndexes();
                 case READING_PROJECT -> initialisationPanel.showReadingProject();
                 case LOADING_COMPONENTS -> {

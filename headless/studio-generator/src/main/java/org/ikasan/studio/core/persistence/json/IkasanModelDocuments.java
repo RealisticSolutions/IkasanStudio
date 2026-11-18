@@ -57,6 +57,8 @@ public final class IkasanModelDocuments {
             root.set("module", module);
             root.set("configuration", configs);
             ObjectNode studio = root.putObject("studio").put("metaPack", pack);
+            String revision = ComponentLibrary.getMetaPackManifest(pack).packVersion();
+            if (revision != null) studio.put("metaPackRevision", revision);
             ObjectNode settings = legacy.deepCopy();
             settings.remove(List.of("version", "flows"));
             if (retained != null) module.remove(MODULE_FIELDS);
@@ -113,10 +115,11 @@ public final class IkasanModelDocuments {
         if (extras.has(name)) throw invalid("Duplicate component: " + name);
         var entry = ComponentLibrary.getIkasanComponents(pack).entrySet().stream().filter(e ->
                 Objects.equals(e.getValue().getComponentType(), input.path("componentType").asText(null))
-                && Objects.equals(e.getValue().getImplementingClass(), input.path("implementingClass").asText(null))
+                && Objects.equals(e.getValue().getImplementingClass(), ComponentImplementationAliases.canonical(input.path("implementingClass").asText(null)))
                 && Objects.equals(e.getValue().getAdditionalKey(), input.path("additionalKey").asText(null)))
                 .findFirst().orElseThrow(() -> invalid("No component mapping for " + name));
         ComponentMeta meta = entry.getValue();
+        properties = ComponentPropertyAliases.normalize(properties, meta);
         ObjectNode nativeComponent = originals.containsKey(name) ? originals.get(name).deepCopy() : JSON.createObjectNode();
         JsonNode componentExtensions = properties.remove(COMPONENT_RETAINED);
         if (componentExtensions != null) nativeComponent.setAll(object(componentExtensions, "component extensions"));
@@ -147,7 +150,7 @@ public final class IkasanModelDocuments {
             if (id.isBlank()) id = identifier(moduleName, flowName, name, configClass);
             nativeComponent.put("configurationId", id).put("configurable", true);
             ObjectNode valuesToWrite = JSON.createObjectNode().put("implementingClass", configClass);
-            for (String key : meta.getRuntimeConfigurationProperties()) if (properties.has(key)) valuesToWrite.set(key, properties.get(key));
+            for (String key : meta.getRuntimeConfigurationProperties()) if (properties.has(key)) valuesToWrite.set(meta.runtimeConfigurationName(key), properties.get(key));
             ObjectNode previous = written.putIfAbsent(id, valuesToWrite);
             if (previous != null && !previous.equals(valuesToWrite))
                 throw invalid("Components sharing configuration " + id + " have different settings; use distinct configuration IDs or matching values");
@@ -163,18 +166,25 @@ public final class IkasanModelDocuments {
             record.put("implementingClass", configClass);
             Map<String, ObjectNode> parameters = index(arrayOrEmpty(record.get("parameters"), "parameters"), "name", "parameters");
             for (String key : meta.getRuntimeConfigurationProperties()) {
+                String runtimeName = meta.runtimeConfigurationName(key);
                 JsonNode value = properties.remove(key);
-                if (value == null) { parameters.remove(key); continue; }
+                if (value == null) {
+                    // Retain REST's unset parameter records (including their IDs/type metadata).
+                    // Clearing a previously populated setting still removes its active runtime value.
+                    ObjectNode existing = parameters.get(runtimeName);
+                    if (existing == null || existing.hasNonNull("value")) parameters.remove(runtimeName);
+                    continue;
+                }
                 try {
                     value = scalarValue(meta, key, value);
                     checkValue(meta, key, value);
                 } catch (IOException incompleteSetting) {
                     // A designer must be able to save unfinished values without presenting them as valid runtime configuration.
                     settings.withObject("/pendingConfiguration").set(key, value);
-                    parameters.remove(key);
+                    parameters.remove(runtimeName);
                     continue;
                 }
-                ObjectNode parameter = parameters.computeIfAbsent(key, ignored -> JSON.createObjectNode().put("name", key));
+                ObjectNode parameter = parameters.computeIfAbsent(runtimeName, ignored -> JSON.createObjectNode().put("name", runtimeName));
                 parameter.set("value", value);
                 parameter.put("implementingClass", parameterClass(meta.getAllowableProperties().get(key).getPropertyDataType()));
             }
@@ -189,13 +199,31 @@ public final class IkasanModelDocuments {
         if (!isDocumentContainer(input)) return input;
         if (!FORMAT.equals(input.path("modelFormat").asText()) || !input.path("formatVersion").isInt()
                 || input.path("formatVersion").asInt() != VERSION) throw invalid("Unsupported Studio model document format");
+        // Compatibility normalization is in-memory; reading must never rewrite the caller's document.
+        input = input.deepCopy();
         knownFields(object(input, "model"), Set.of("modelFormat", "formatVersion", "module", "configuration", "studio"));
         ObjectNode module = object(input.get("module"), "module");
         ObjectNode studio = object(input.get("studio"), "studio");
-        knownFields(studio, Set.of("metaPack", "properties", "flows"));
+        StudioDocumentMetadata.normalize(studio);
+        knownFields(studio, Set.of("metaPack", "metaPackRevision", "properties", "flows"));
         String pack = text(studio, "metaPack");
+        final org.ikasan.studio.core.metapack.model.MetaPackManifest manifest;
         try {
-            if (!ComponentLibrary.getMetaPackManifest(pack).ikasanVersion().equals(text(module, "ikasanVersion")))
+            manifest = ComponentLibrary.getMetaPackManifest(pack);
+        } catch (org.ikasan.studio.core.StudioBuildException e) {
+            throw new IOException("This model requires meta-pack " + pack
+                    + (studio.has("metaPackRevision") ? " at revision " + text(studio, "metaPackRevision") : "")
+                    + ", which is unavailable or invalid. Install the required pack, or explicitly update the model to a supported pack after review. The model is unchanged.", e);
+        }
+        try {
+            if (studio.has("metaPackRevision")) {
+                String requiredRevision = text(studio, "metaPackRevision");
+                String availableRevision = manifest.packVersion();
+                if (!requiredRevision.equals(availableRevision)) throw invalid("Meta-pack " + pack
+                        + " is locked to revision " + requiredRevision + ", but the available revision is " + availableRevision
+                        + ". Restore the required revision using Manage Meta-Packs, or review and explicitly adopt the available revision. The model is unchanged.");
+            }
+            if (!manifest.ikasanVersion().equals(text(module, "ikasanVersion")))
                 throw invalid("module.ikasanVersion does not match studio.metaPack");
             Map<String, ObjectNode> configs = index(requiredArray(input.get("configuration"), "configuration"), "configurationId", "configuration");
             for (ObjectNode config : configs.values()) index(requiredArray(config.get("parameters"), "parameters"), "name", "parameters");
@@ -262,13 +290,17 @@ public final class IkasanModelDocuments {
         ComponentMeta meta = ComponentLibrary.getIkasanComponents(pack).get(text(extra, "component"));
         if (meta == null) throw invalid("Unknown component variant for " + name);
         if (!meta.getComponentType().equals(text(raw, "componentType"))) throw invalid("Component type disagrees with variant for " + name);
-        ObjectNode result = object(extra.get("properties"), "component properties").deepCopy();
+        ObjectNode result = ComponentPropertyAliases.normalize(object(extra.get("properties"), "component properties"), meta);
         rejectFields(result, COMPONENT_FIELDS, "component properties");
-        // Collection settings lived in studio.properties before native List/Map support.
-        // Keep those legacy values for ComponentProperty to normalize, but never silently
-        // choose between a legacy setting and a native configuration value below.
+        // Newly mapped settings may still live in studio.properties in older documents.
+        // Preserve their values for normalization, but never silently choose between
+        // a Studio setting and a native configuration value below.
         for (String key : meta.getRuntimeConfigurationProperties()) {
-            if (!org.ikasan.studio.core.model.StringCollectionValues.supports(
+            if (!meta.getLegacyPropertyAliases().containsValue(key)
+                    && !meta.getRuntimeConfigurationMappings().containsValue(key)
+                    // These XML settings lived in Studio properties before runtime mapping was corrected.
+                    && !"org.ikasan.component.converter.xml.ObjectToXMLStringConverter".equals(meta.getImplementingClass())
+                    && !org.ikasan.studio.core.model.StringCollectionValues.supports(
                     meta.getAllowableProperties().get(key).getPropertyDataType())) {
                 rejectFields(result, List.of(key), "component properties");
             }
@@ -282,7 +314,7 @@ public final class IkasanModelDocuments {
         result.put("componentType", meta.getComponentType()).put("implementingClass", meta.getImplementingClass());
         if (meta.getAdditionalKey() != null) result.put("additionalKey", meta.getAdditionalKey());
         String implementation = text(raw, "implementingClass");
-        if (!meta.isGeneratesUserImplementedClass() && !meta.getImplementingClass().equals(implementation))
+        if (!meta.isGeneratesUserImplementedClass() && !meta.getImplementingClass().equals(ComponentImplementationAliases.canonical(implementation)))
             throw invalid("Runtime implementation disagrees with variant for " + name);
         if (meta.isGeneratesUserImplementedClass() && !result.path("requiresStub").asBoolean(true)) {
             result.put("userImplementedClassName", implementation).put("requiresStub", false);
@@ -299,17 +331,35 @@ public final class IkasanModelDocuments {
             }
             result.put(key, value);
         }
-        if (!meta.getRuntimeConfigurationProperties().isEmpty()) {
+        // A generated native ID is not an explicitly configured Studio property. Turning it
+        // into one on load adds configurationIdProperty on the next save and makes a freshly
+        // saved live canvas compare unequal to the same model reloaded for test generation.
+        if (!extra.has("configurationIdProperty") && !meta.getRuntimeConfigurationProperties().isEmpty()
+                && id.equals(identifier(moduleName, flowName, name, configurationClass(meta)))) {
+            result.remove("configurationId");
+        }
+        // Before XML runtime mappings existed, document saves used the builder identifier and
+        // kept XML settings in Studio properties, without any native configuration record.
+        // Only that exact historical shape can omit the record; modern or explicitly linked
+        // configurations must still fail when missing.
+        boolean legacyXmlWithoutConfiguration =
+                "org.ikasan.builder.component.converter.ObjectToXmlStringConverterBuilder".equals(implementation)
+                        && "org.ikasan.component.converter.xml.ObjectToXMLStringConverter".equals(meta.getImplementingClass())
+                        && !raw.has("configurationId") && !raw.path("configurable").asBoolean(false)
+                        && !extra.has("configurationIdProperty") && !extra.has("configurationIdTemplate");
+        if (!meta.getRuntimeConfigurationProperties().isEmpty() && !legacyXmlWithoutConfiguration) {
             ObjectNode config = configs.get(id);
             if (config == null) throw invalid("Missing configuration " + id + " for " + name);
             if (!configurationClass(meta).equals(text(config, "implementingClass"))) throw invalid("Configuration class does not match " + name);
             for (JsonNode p : requiredArray(config.get("parameters"), "parameters")) {
-                String key = text(p, "name");
-                if (meta.getRuntimeConfigurationProperties().contains(key)) {
+                String key = meta.runtimeConfigurationProperty(text(p, "name"));
+                if (key != null) {
                     if (result.has(key)) throw invalid("Conflicting Studio and runtime configuration field " + key + " for " + name);
-                    if (!p.has("value")) throw invalid("Missing configuration value for " + key);
-                    checkValue(meta, key, p.get("value"));
-                    result.set(key, p.get("value").deepCopy());
+                    // Ikasan REST may omit null-valued members entirely. Missing and explicit null
+                    // both mean unset; neither supplies a generated setter or an invented default.
+                    JsonNode value = p.has("value") ? p.get("value") : JSON.nullNode();
+                    checkValue(meta, key, value);
+                    result.set(key, value.deepCopy());
                 }
             }
         }

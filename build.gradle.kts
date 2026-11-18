@@ -3,6 +3,9 @@ import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import groovy.json.JsonSlurper
+import java.nio.file.Path
+import java.security.MessageDigest
+import java.util.HexFormat
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -13,9 +16,9 @@ import java.time.Duration
 // placing them on the plugin runtime classpath or replacing IntelliJ-owned libraries.
 buildscript {
     dependencies {
-        classpath(platform("com.fasterxml.jackson:jackson-bom:2.22.3"))
+        classpath(platform("com.fasterxml.jackson:jackson-bom:2.22.4"))
         constraints {
-            add("classpath", "org.jsoup:jsoup:1.23.2") {
+            add("classpath", "org.jsoup:jsoup:1.24.1") {
                 because("GHSA-pmhh-3w7g-xqp8 and GHSA-65r4-943x-97jj affect build-tool XML parsing")
             }
         }
@@ -27,16 +30,18 @@ plugins {
     alias(libs.plugins.intelliJPlatform) // IntelliJ Platform Gradle Plugin
     alias(libs.plugins.changelog) // Gradle Changelog Plugin
     alias(libs.plugins.qodana) // Gradle Qodana Plugin
-    id("org.jetbrains.kotlin.jvm") version "2.4.20"
+    id("org.jetbrains.kotlin.jvm") version "2.4.21"
     id("idea")
 }
 
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
-val metaPackBomCoordinates = fileTree("src/main/resources/studio/metapack") {
-    include("*/metapack.json")
-}.files.flatMap { manifestFile ->
+val releasedMetaPackResourceRoots = listOf("src/main/resources/studio/metapack",
+    "headless/studio-pack-v5-release/src/main/resources/studio/metapack")
+val metaPackBomCoordinates = releasedMetaPackResourceRoots.flatMap { resourceRoot ->
+    fileTree(resourceRoot) { include("*/metapack.json") }.files
+}.flatMap { manifestFile ->
     @Suppress("UNCHECKED_CAST")
     val manifest = JsonSlurper().parse(manifestFile) as Map<String, Any?>
     @Suppress("UNCHECKED_CAST")
@@ -44,9 +49,9 @@ val metaPackBomCoordinates = fileTree("src/main/resources/studio/metapack") {
     imports.map { "${it.getValue("groupId")}:${it.getValue("artifactId")}:${it.getValue("version")}@pom" }
 }.toSortedSet()
 
-val metaPackHelpUrls = fileTree("src/main/resources/studio/metapack") {
-    include("*/library/**/component-meta_en_GB.json")
-}.files.mapNotNull { metadataFile ->
+val metaPackHelpUrls = releasedMetaPackResourceRoots.flatMap { resourceRoot ->
+    fileTree(resourceRoot) { include("*/library/**/component-meta_en_GB.json") }.files
+}.mapNotNull { metadataFile ->
     @Suppress("UNCHECKED_CAST")
     val metadata = JsonSlurper().parse(metadataFile) as Map<String, Any?>
     (metadata["webHelpURL"] as? String)?.takeIf { it.startsWith("https://") }
@@ -100,7 +105,7 @@ dependencies {
     testImplementation("com.icegreen:greenmail:1.6.15")
     // GreenMail's transitive 1.6.7 has CVE-2025-7962; 1.6.8 preserves the javax.mail API.
     testImplementation("com.sun.mail:jakarta.mail:1.6.8")
-    implementation("org.apache.sshd:sshd-sftp:2.20.0") {
+    implementation("org.apache.sshd:sshd-sftp:2.20.1") {
         exclude(group = "org.slf4j", module = "slf4j-api")
     }
     implementation("org.apache.ftpserver:ftpserver-core:1.2.1") {
@@ -110,12 +115,12 @@ dependencies {
     // RCE in AbstractIoBuffer.resolveClass() - allowlist applied too late/skippable). Fixed upstream in 2.2.6;
     // pin it here rather than waiting on a ftpserver-core release, since ftpserver's own project is inactive.
     constraints {
-        implementation("org.apache.mina:mina-core:2.2.9") {
-            because("CVE-2026-41635 / CVE-2026-41409 - fixes deserialization RCE in mina-core < 2.2.9")
+        implementation("org.apache.mina:mina-core:2.2.10") {
+            because("CVE-2026-41635 / CVE-2026-41409 - fixes deserialization RCE in mina-core < 2.2.10")
         }
     }
 
-    testImplementation("ch.qos.logback:logback-classic:1.6.4")
+    testImplementation("ch.qos.logback:logback-classic:1.6.6")
 
     compileOnly ("org.projectlombok:lombok:1.18.48")
     annotationProcessor("org.projectlombok:lombok:1.18.48")
@@ -142,7 +147,7 @@ dependencies {
 // The platform fixtures resolve separately from testRuntimeClasspath. These are
 // test-only repairs; IntelliJ's installed libraries remain owned by JetBrains.
 dependencies {
-    add("intellijPlatformTestDependencies", platform("com.fasterxml.jackson:jackson-bom:2.18.11"))
+    add("intellijPlatformTestDependencies", platform("com.fasterxml.jackson:jackson-bom:2.22.4"))
     constraints {
         add("intellijPlatformTestDependencies", "org.assertj:assertj-core:3.27.7") {
             because("CVE-2026-24400: patch the platform fixture's XML assertions")
@@ -156,7 +161,7 @@ dependencies {
 // declares testClassesDirs pointing at this source set's output directories.
 sourceSets {
     main {
-        resources.exclude("studio/metapack/**")
+        resources.exclude("studio/metapack/**", "studio/runtime/**")
     }
     create("testHarness") {
         java.srcDir("src/testHarness/java")
@@ -171,7 +176,7 @@ sourceSets {
 // A standalone stdio process, deliberately independent of IntelliJ's classpath.
 val mcpAdapter = sourceSets.create("mcpAdapter")
 dependencies {
-    add(mcpAdapter.implementationConfigurationName, "com.fasterxml.jackson.core:jackson-databind:2.22.3")
+    add(mcpAdapter.implementationConfigurationName, "com.fasterxml.jackson.core:jackson-databind:2.22.4")
 }
 val mcpAdapterJar = tasks.register<Jar>("mcpAdapterJar") {
     archiveFileName.set("studio-mcp-adapter.jar")
@@ -188,6 +193,37 @@ val mcpAdapterJar = tasks.register<Jar>("mcpAdapterJar") {
 tasks.named<ProcessResources>("processResources") {
     from(mcpAdapterJar) { into("studio/ai") }
 }
+
+// A reproducible source fingerprint distinguishes nightly/local builds sharing a version number.
+val diagnosticIdentityFile = layout.buildDirectory.file("generated/import-diagnostics/studio-import-build-id.txt")
+val diagnosticPluginVersionFile = layout.buildDirectory.file("generated/import-diagnostics/studio-plugin-version.txt")
+val generateImportDiagnosticIdentity = tasks.register("generateImportDiagnosticIdentity") {
+    val sourceRootPath = layout.projectDirectory.asFile.absolutePath
+    val configuredPluginVersion = providers.gradleProperty("pluginVersion").get()
+    inputs.property("pluginVersion", configuredPluginVersion)
+    inputs.files(fileTree("src/main"), fileTree("native-mcp/src/main"),
+        fileTree("headless") { include("*/src/main/**", "*/build.gradle.kts", "build.gradle.kts") },
+        files("build.gradle.kts", "gradle.properties", "settings.gradle.kts",
+            "gradle/libs.versions.toml", "gradle/wrapper/gradle-wrapper.properties",
+            "native-mcp/build.gradle.kts", "headless/settings.gradle.kts"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.files(diagnosticIdentityFile, diagnosticPluginVersionFile)
+    doLast {
+        val diagnosticSourceRoot = Path.of(sourceRootPath)
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(configuredPluginVersion.toByteArray(Charsets.UTF_8)); digest.update(0.toByte())
+        inputs.files.files.filter { it.isFile }.sortedBy { diagnosticSourceRoot.relativize(it.toPath()).toString() }.forEach {
+            val name = diagnosticSourceRoot.relativize(it.toPath()).toString().replace('\\', '/')
+            digest.update(name.toByteArray(Charsets.UTF_8)); digest.update(0.toByte())
+            digest.update(it.readBytes()); digest.update(0.toByte())
+        }
+        val target = outputs.files.files.single { it.name == "studio-import-build-id.txt" }
+        target.parentFile.mkdirs()
+        target.writeText(HexFormat.of().formatHex(digest.digest()) + "\n")
+        outputs.files.files.single { it.name == "studio-plugin-version.txt" }.writeText(configuredPluginVersion + "\n")
+    }
+}
+tasks.named<ProcessResources>("processResources") { from(generateImportDiagnosticIdentity) { into("studio/diagnostics") } }
 
 // Ship the standalone tools as data, not on IntelliJ's plugin classpath.
 val offlineToolsArchive = layout.projectDirectory.file("headless/studio-cli/build/plugin-tools/studio-offline-tools.zip")
@@ -332,6 +368,7 @@ tasks {
             gradle.includedBuild("studio-headless").task(":studio-bundled-packs:check"),
             gradle.includedBuild("studio-headless").task(":studio-pack-v3:check"),
             gradle.includedBuild("studio-headless").task(":studio-pack-v4:check"),
+            gradle.includedBuild("studio-headless").task(":studio-pack-v5-release:check"),
             gradle.includedBuild("studio-headless").task(":studio-cli:check"))
         dependsOn(validateMetaPacks)
     }
@@ -436,6 +473,10 @@ intellijPlatformTesting {
                     includeTestsMatching("*UserImplementedClassRelocatorHeavyTest")
                     includeTestsMatching("*MigrationMavenSyncTest")
                     includeTestsMatching("*StudioNativeMcpLoadingTest")
+                    includeTestsMatching("*StudioBundleLocalisationTest")
+                    includeTestsMatching("*FlowPackageRefactoringHeavyTest")
+                    includeTestsMatching("*FlowTestRenameRefactoringHeavyTest")
+                    includeTestsMatching("*FlowClipboardActionsTest")
                 }
             }
         }
@@ -523,6 +564,7 @@ tasks.register<Exec>("verifyReleaseArchive") {
     val archive = tasks.buildPlugin.flatMap { it.archiveFile }
     inputs.file(archive)
     inputs.file("scripts/verify-release-archive.py")
+    inputs.dir("headless/studio-pack-v5-release/src/main/resources")
     inputs.dir("src/main/resources")
     inputs.file("LICENSE.txt")
     val report = layout.buildDirectory.file("reports/release/archive.json")
@@ -537,8 +579,8 @@ val cpdTools = configurations.create("cpdTools") {
     isCanBeResolved = true
 }
 dependencies {
-    add(cpdTools.name, "net.sourceforge.pmd:pmd-cli:7.28.0")
-    add(cpdTools.name, "net.sourceforge.pmd:pmd-java:7.28.0")
+    add(cpdTools.name, "net.sourceforge.pmd:pmd-cli:7.29.0")
+    add(cpdTools.name, "net.sourceforge.pmd:pmd-java:7.29.0")
 }
 val cpdReportFile = layout.buildDirectory.file("reports/cpd/duplicates.txt")
 val cpdSourceDirectories = listOf(file("src/main/java"), file("headless/studio-generator/src/main/java"))

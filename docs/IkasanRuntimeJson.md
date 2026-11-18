@@ -2,6 +2,8 @@
 
 Studio can import the module metadata JSON exported by core Ikasan or the Dashboard, with a separate, optional configuration JSON document. Existing Studio `model.json` imports continue to work.
 
+For a guided runtime → local source → environment workflow, use **Tools → Ikasan Studio → Import Module…**. See [source-assisted module import](SourceAssistedModuleImport.md) for bespoke-class selection, bean contracts, dependency review and remaining verification.
+
 ## Where the documents come from
 
 The core Ikasan source trees expose these authenticated GET endpoints, relative to the application's context path:
@@ -15,7 +17,7 @@ The core Ikasan source trees expose these authenticated GET endpoints, relative 
 | `/rest/configuration/invokers` | Invoker configuration records |
 | `/rest/configuration/module` | The module's own configuration, when configurable; this is not an export of every component |
 
-The module controllers require appropriate authority (`ALL` or `WebServiceAdmin` in the inspected implementations). Use the deployment's normal authentication. Studio reads supplied files/text; it does not connect to a running module or change its configuration.
+The module controllers require appropriate authority (`ALL` or `WebServiceAdmin` in the inspected implementations). Use the deployment's normal authentication. Studio can read supplied files/text or fetch these documents from a running module. Fetch uses read-only endpoints and never changes the running module's configuration.
 
 The Dashboard's module visualisation download serializes `ModuleMetaData` to `<module-name>.json`. Its configuration dialog serializes `ConfigurationMetaData` to a file which may have a `.txt` extension. The importer accepts JSON content regardless of filename extension. The Dashboard and module-local Blue Console remain distinct products.
 
@@ -24,13 +26,114 @@ Source contracts inspected: `rest/rest-module/.../MetaDataApplication.java` and 
 ## Import into Studio
 
 1. Create/open the destination Studio project and choose **Import model.json** from the module creation screen.
-2. Select **Import Ikasan runtime metadata and configuration JSON**. Paste or choose the module metadata document.
+2. Select **Import an Ikasan module**. Choose **Fetch from running module…** OR **Paste module metadata JSON**. The latter opens an editor where you can paste or choose the metadata document. Leave this option unchecked when importing a complete Studio `model.json`; only the **Studio model.json** tab is shown in that mode.
 3. Select the original Ikasan version and enter the destination application's Java package. The runtime module's `version` is an application version, not a Studio meta-pack identifier; `ikasanVersion`, when present, is checked separately.
-4. In **Ikasan configuration (optional)**, paste or choose the component configuration export. A single configuration object or an array of objects is accepted. Records are matched by `configurationId`, not position or component display name.
-5. Select component variants if prompted. Some variants share a runtime implementation class: a scheduled consumer's metadata, for example, does not identify every possible message provider. Consult the original application rather than guessing.
-6. Review the report before importing. Import replaces the destination project's model and uses the existing generation workflow. Use a new project when exploring an existing application.
+4. For manual input, **Paste configuration JSON (optional)** becomes available after metadata is supplied. In that tab, paste or choose the component configuration export. Leave it blank to import topology only and configure components afterwards. A single configuration object or an array of objects is accepted. Records are matched by `configurationId`, not position or component display name.
+5. Select component variants only if prompted. For shared runtime classes, Studio links the component's
+   configurationId to its supplied configuration record and matches the exact configuration class against
+   the selected pack. A unique match selects the variant automatically and records the evidence in the
+   import review. This distinguishes Scheduled, FTP, SFTP and Local File consumers without relying on
+   component names or cron expressions. Missing/unlinked records, unknown classes or multiple matching
+   variants still require clarification. Duplicate configuration IDs are rejected. Original
+   message-provider wiring still needs review; no Java classes are loaded to guess inheritance. REST
+   parameters with omitted/null values are retained as unset rather than applied or rejected; duplicate
+   parameter names remain invalid.
+6. Optionally select **Review source code from the original project** and/or **Import local configuration** under **After import (optional)**. These steps apply to both Studio and Ikasan imports: the model does not include Java implementations or environment files. If both are selected, source review comes first, then properties.
+7. Review the report before importing. Import replaces the destination project's model and uses the existing generation workflow. Use a new project when exploring an existing application.
 
-Imported flows use **MANUAL** startup settings. Project build settings and ports use Studio defaults. Bring across the original business implementations, dependencies and Spring wiring, review endpoint settings, then compile and test before starting flows. Importing metadata is not a promise of an immediately runnable reproduction of the original application.
+Fetched documents are available for inspection; choose a **Paste** option to edit or replace them. Fetching fills the preview only. Model changes still require review and import.
+
+The built-in `org.ikasan.component.endpoint.util.producer.DevNull` runtime class maps to **Dev Null Producer** in all bundled packs, including the retained snapshot. Generation uses `devNullProducer().build()` rather than injecting a separate Spring bean. Similarly named custom classes remain Generic Producers. Previously imported models classified as Generic Producer require re-import or explicit component correction; regeneration alone preserves their existing classification.
+
+The runtime import review groups configuration warnings and implementation classes. Repeated classes or identical sets of unapplied fields appear once with all affected flow/component locations beneath them. Shared guidance appears once per section; other checks remain visible first. Supply implementation classes through source code or dependencies as appropriate, then verify their Spring wiring. Automatically matched component variants are omitted from the popup. The original detailed messages, including variant matches, remain in the saved import provenance.
+
+“Configuration fields not applied” lists populated settings that Studio could not reproduce from its supported properties. Verified unchanged defaults do not require a warning. Local File Consumer filename lists and SFTP Consumer duplicate-filter/move settings are supported across the bundled versions. Some configuration-only settings still require manual work, including SFTP private-key passphrases (even an explicit empty string), nondefault relative-path/recovery settings and local-file path/SpEL settings. The original values remain in the imported source snapshot; retaining them does not apply them to generated code. See the [runtime configuration audit](RuntimeImportConfigurationAudit.md) for the complete scope and remaining limitations.
+
+Imported flows preserve each declared `flowStartupType`: **AUTOMATIC**, **MANUAL** or **DISABLED**. Missing/null settings fall back to **MANUAL** with a flow-specific review item; unknown or malformed values block import rather than silently changing behaviour. The application HTTP port is copied from the module metadata. Missing H2 database and web console ports default to HTTP + 1 and HTTP + 2. If these exceed 65535, import uses valid non-conflicting pack defaults and adds a review message; no ports are reserved or assumed to be free. If absent, Studio uses its default and flags the port for review; invalid supplied ports block import. The REST URL may use a proxy port, so it is not used to infer the application port. Project build settings come from the selected meta-pack; compare the generated POM with the original for custom dependencies, repositories, plugins and profiles. Bring across the original business implementations, dependencies and Spring wiring, review endpoint settings, then compile and test before starting flows. Importing metadata is not a promise of an immediately runnable reproduction of the original application.
+
+Runtime exports describe effective settings, so defaults left blank in the original project can appear as explicit values after import. For example, an omitted scheduler timezone can be reported as `Europe/London`, and an automatically generated configuration ID can appear as a populated field. Studio preserves those reported values: removing the timezone could change scheduling on another machine, and removing the ID could change which runtime configuration overrides are found. The export does not reliably distinguish explicit settings from resolved defaults.
+
+## Fetch from a running module
+
+In the import dialog, select **Import an Ikasan module**, then choose **Fetch from running module…**. Paste the application root URL
+or any page URL within it (for example `http://localhost:8080/orders/modules/list.htm`), the registered
+module name, and optional Basic authentication credentials. The registered module name is
+case-sensitive (`module.name`) and may differ from the lowercase URL context: for example,
+URL `http://localhost:12450/converterandtranslators5` with module `converterAndTranslators5`.
+Recognized `/swagger-ui/index.html`, `/swagger-ui/`, `/swagger-ui.html` and Blue Console
+`/home.htm`, `/login.jsp` and `/modules/view.htm` suffixes are removed
+automatically. Queries and fragments on any page URL are discarded before REST requests.
+The dialog previews the first metadata GET URL as the application URL/module name are edited;
+the preview is selectable for copying and contains no credentials or UI query/fragment.
+If metadata returns HTTP 404, Fetch tries each parent path on the same scheme/host/port,
+up to 16 candidate roots within a shared 20-second metadata-discovery budget. It issues only
+read-only metadata GETs; it does not visit the supplied page, follow page links or follow redirects.
+A successful response must still contain valid metadata for the exact supplied module name.
+Authentication failures, redirects, server errors and malformed/mismatched successful metadata
+stop the search rather than being hidden by another candidate. Cancellation remains available.
+After a successful fetch, the resolved root is displayed and remembered, and all scoped
+configuration requests use that root. Intermediate discovery 404s are logged locally but
+are not reported as import problems when discovery succeeds. Empty credentials request
+anonymous access; the deployment must permit the REST calls. The inspected controllers
+require `ALL` or `WebServiceAdmin` authority. HTTPS uses normal JVM certificate trust;
+redirects are not followed. Enter the final application URL; recognising the Blue Console login page does not reuse the browser login session. Studio authenticates its REST requests separately with the supplied Basic credentials.
+
+Fetch reads `/rest/metadata/module/{moduleName}`, then
+`/rest/configuration/{moduleName}/{flowName}/components` for every returned flow.
+Names are encoded as individual path segments. The unqualified configuration endpoints
+select the first registered module in the inspected implementation, so Studio deliberately
+uses scoped component endpoints. It never invokes the older `createConfiguration` GETs,
+configuration writes or flow control endpoints.
+
+On success, the documents populate the existing editable preview and runtime import mode
+is selected. Choose the matching Ikasan meta-pack and destination package, resolve any
+component variant choices, then review before importing. If the selected pack is unsuitable,
+Studio recommends an exact available version first, otherwise the nearest newer stable patch
+in the same major/minor line (for example 4.1.3 → 4.1.6). Changing packs or using a newer patch
+requires confirmation. A patch import targets the selected pack's dependencies, adds an upgrade
+warning to the review and retains the original export/version as provenance. It is not a
+compatibility guarantee: compile and test before starting flows. Downgrades, cross-minor/major
+changes and non-exact snapshot/prerelease substitutions are rejected; use separate migration
+work for those cases. Fetch alone does not modify
+project files or its live model. A failed/cancelled fetch leaves the existing preview
+unchanged. If component configuration is unavailable, explicitly uncheck **Fetch component
+configuration for each flow** and fetch topology only; settings then require manual review.
+
+The fetch dialog remembers the application URL, registered module name, username and
+configuration checkbox in this project's local IDE workspace, including across IDE restarts.
+Values are remembered after Fetch or closing the dialog, including failed requests and Cancel.
+Swagger and Blue Console landing-page suffixes are removed before saving; an invalid URL leaves the last usable URL unchanged.
+Passwords are not saved in Studio settings, project files or import provenance;
+the password field remains populated while the fetch dialog stays open, so failed or cancelled
+fetch attempts can be retried without re-entry. Closing the dialog (including success or Cancel)
+clears the field; a newly opened dialog starts blank. Temporary request password arrays are
+cleared after every attempt. The fetched configuration itself can
+contain application credentials and is retained by the existing importer as provenance,
+so review it before sharing the project. Fetch has a five-second connection timeout,
+a twenty-second request timeout and an 8 MiB limit on metadata and combined configuration.
+The IDE log records each actual GET endpoint, acquisition stage and HTTP status, making wrong
+context paths and module-name casing visible. Request credentials, authorization headers,
+Landing-page query/fragment values and response bodies are not logged. HTTP 404/500 guidance asks
+the developer to check the exact registered module name as well as context/endpoint availability;
+HTTP 500 can also require checking the module server log.
+Requests are cancellable while waiting for the server. No retry or partial configuration
+fallback happens silently. Conflicting records with the same configuration ID are rejected.
+
+The fetch is a sequence of read-only requests, not an atomic operational backup. Changes
+to the running module during acquisition can require a fresh fetch and review. Only
+component configuration is fetched in this first implementation; module/flow/invoker
+configuration, handwritten code, application dependencies and wiring still require review.
+Fetched imports preserve declared flow startup settings, just like file-based runtime imports. Missing/null settings fall back to **MANUAL** with review guidance.
+
+## Import application properties alongside runtime metadata
+
+Runtime REST imports do not fetch the original application properties or discover every
+key used by bespoke classes. Select **Import properties files after the model has been
+generated** in the import dialog, or use **Tools → Ikasan Studio → Import Configuration…**
+later. Supply the original properties files, review their changes, and import settings for local development. Settings are saved to
+`user/src/main/resources/studio-local.properties` outside `generated/`. See [local configuration import](ProjectFilesAndRecovery.md#import-local-configuration)
+for local Run/Debug setup, value comparison and replacement rules.
+The Java implementations and Spring wiring still need to be supplied separately.
 
 ## Export three separate files
 
@@ -79,7 +182,9 @@ After conversion, regenerate shared flow-test support if prompted. `FlowTestSupp
 
 For imported runtime exports, the original input documents and review report are retained as import provenance under `studio.properties.ikasanRuntimeImport`. That provenance is an immutable reference snapshot; editing it does not change the active topology or configuration. Configuration and provenance may contain credentials; handle them as application configuration.
 
-Configuration application is explicitly meta-pack driven. `runtimeConfigurationProperties` lists verified scalar and string-collection parameters that map directly to component properties; the configuration class must also match the pack's configuration type (`runtimeConfigurationClass`, or the `configuration` property's `usageDataType`). The bundled packs declare verified scalar settings for scheduled, JMS, FTP/SFTP, local-file, email and logging components. Email Producer also maps `toRecipients`, `ccRecipients`, `bccRecipients` (`List<String>`) and `extendedMailSessionProperties` (`Map<String, String>`). Other configuration values, module/flow/invoker configuration and decorators are preserved for review but are not automatically applied. Custom component references use existing implementations and request no replacement stub; their construction and payload types still require review.
+The import review highlights work still required before running. Successfully applied fields and unset parameters do not produce review messages. Fields matching a meta-pack's verified runtime defaults also need no review item, provided the configuration class matches. Non-default and unknown fields that cannot be applied are grouped by component, with field names only; their original values remain in the import provenance. Implementation, wiring, decorator and version guidance remains visible.
+
+Configuration application is explicitly meta-pack driven. `runtimeConfigurationProperties` lists verified scalar and string-collection Studio properties; names match REST parameters exactly unless the component declares a discrepancy in `runtimeConfigurationMappings` (REST name → Studio property). The same mapping is used when reading/writing native configuration records, so exported parameter names remain correct for Ikasan. The configuration class must also match the pack's configuration type (`runtimeConfigurationClass`, or the `configuration` property's `usageDataType`). The bundled packs declare verified scalar settings for scheduled, JMS, FTP/SFTP, local-file, email and logging components. Explicit discrepancies cover Email `mailHost`/`mailhost`, `password`/`mailPassword`, `runtimeEnvironment`/`mailRuntimeEnvironment`, `subject`/`mailSubject`, `mailFrom`/`from`, `mailTransportProtocol`/`transportProtocol`, and FTP `FTPS`/`ftps`. Type and configuration-class checks still apply; similar spellings are not guessed. Spring JMS Producer and Consumer also import complete `connectionFactoryJndiProperties` and `destinationJndiProperties` string maps from REST configuration. Imported maps override the corresponding individual JNDI fields during generation, including Studio defaults; empty maps remain explicitly empty. Provider-specific string keys are preserved. Non-string/nested map values and mismatched configuration classes remain in provenance and require review. No original project files or source code are needed. Email Producer also maps `toRecipients`, `ccRecipients`, `bccRecipients` (`List<String>`) and `extendedMailSessionProperties` (`Map<String, String>`). Other configuration values, module/flow/invoker configuration and decorators are preserved for review but are not automatically applied. Custom component references use existing implementations and request no replacement stub; their construction and payload types still require review.
 
 Ambiguous or unsupported components, invalid configuration records, cycles, joins and disconnected graphs fail before import changes project files. These are reported rather than silently dropping components or changing routing. New mappings should be added to the meta-pack with tests against the corresponding Ikasan API.
 
@@ -101,3 +206,14 @@ Select **Leave unset** to use the component default. Clearing all rows with that
 Saved/exported parameter values use JSON arrays or objects and Ikasan's `ConfigurationParameterListImpl` / `ConfigurationParameterMapImpl` identifiers. Generated recipient entries in `application.properties` now use JSON arrays; the generated factory reads these without evaluating their contents as Spring expressions. Existing comma-separated recipient overrides are still accepted. Extended mail-session maps are generated as Java collection values in the component factory.
 
 After updating a design to use these types, regenerate its application code and properties together. These changes concern configuration values; payloads such as `List<Order>` remain developer-defined Java objects.
+
+Previously saved Studio XML converters using the old builder-class identifier are migrated to the runtime implementation identifier when loaded or migrated between Ikasan versions. XML string converters are matched using their runtime implementation class and import verified `XmlConfiguration` fields, including validation and namespace settings. Their JAXB input `objectClass` is a builder setting absent from REST metadata; supply it in Studio before generating code. It cannot be inferred from the XML root-name settings. FTP Consumer scheduling/recovery and `provideRelativePath` values matching pack-declared runtime defaults do not require review; changed unsupported values still do.
+
+Ikasan REST can omit the `value` member of an unset configuration parameter. Studio accepts both an omitted value and explicit JSON `null` when importing and reopening saved models. Unset parameter records retain their IDs/type metadata across saves; no setter is generated for an unset optional setting such as JMS `priority`. Explicit values, including `false` and `0`, remain active settings and are type checked. Clearing a previously populated setting removes its active runtime parameter value.
+
+When loading Studio document containers, a uniquely matching installed pack ID can be resolved despite case differences (for example `v4.1.6` → `V4.1.6`). Exact registered IDs take precedence; no version upgrade or revision change is inferred. Recognised settings placed directly under `studio` (`applicationPackageName`, `flowStartupType`, `h2DbPortNumber`, `h2WebPortNumber`, `useEmbeddedH2`) are read into `studio.properties` without changing their values. A direct `studio.review` is retained under `studio.properties.ikasanRuntimeImport.review`. Equal duplicates collapse; conflicting values block loading rather than choosing one. Unknown metadata fields still require a compatible document format. Normalization happens in memory; the input file is unchanged until an explicit save or import writes a standard document.
+
+## Troubleshooting on restricted workstations
+
+Use the [screenshot-friendly import diagnostic report](RuntimeImportDiagnostics.md) to share numbered
+issues, REST status, configuration shapes and Studio failure locations without exporting source JSON.

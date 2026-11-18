@@ -402,7 +402,7 @@ public class StudioProjectFiles {
         }
     }
 
-    private static Path getModelJsonPath(Project project) {
+    public static Path getModelJsonPath(Project project) {
         VirtualFile baseDir = getProjectBaseDir(project);
         return baseDir == null ? null : baseDir.toNioPath().resolve(GENERATED_CONTENT_ROOT.substring(1))
                 .resolve(SRC_MAIN).resolve(JSON_MODEL_SUB_DIR).resolve(MODEL_JSON);
@@ -419,9 +419,16 @@ public class StudioProjectFiles {
     }
 
     public static CompletableFuture<Void> refreshCodeFromModel(Project project, GenerationRequest generationRequest) {
+        return refreshCodeFromModel(project, generationRequest, true);
+    }
+
+    public static CompletableFuture<Void> refreshCodeFromModel(Project project, GenerationRequest generationRequest,
+                                                               boolean reloadMavenAfterGeneration) {
         GeneratedProjectSynchronizer pipsiIkasanModel = project.getService(UiContext.class).getPipsiIkasanModel();
         pipsiIkasanModel.saveModelJsonToDisk();
-        return pipsiIkasanModel.asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(generationRequest);
+        return reloadMavenAfterGeneration
+                ? pipsiIkasanModel.asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(generationRequest)
+                : pipsiIkasanModel.asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(generationRequest, false);
     }
 
     public static void refreshCodeFromModelAndCauseRedraw(Project project, GenerationRequest generationRequest) {
@@ -455,17 +462,6 @@ public class StudioProjectFiles {
         } else {
             return LocalFileSystem.getInstance().findFileByPath(basePath);
         }
-    }
-
-    /**
-     * The project root's on-disk path, or null if the VFS cannot currently resolve it (e.g. a project that
-     * needs resaving) - lets a caller check/use the project root without depending on {@code VirtualFile}
-     * itself (see ArchUnitBoundaryTest#platformHeavyApisRemainBehindKnownAdapters).
-     * @param project is the Intellij project instance
-     */
-    public static String getProjectBasePath(Project project) {
-        VirtualFile baseDir = getProjectBaseDir(project);
-        return baseDir != null ? baseDir.getPath() : null;
     }
 
     /**
@@ -744,19 +740,29 @@ public class StudioProjectFiles {
         if (!fileName.endsWith(".java")) {
             return content;
         }
-        PsiFile inMemoryFile = PsiFileFactory.getInstance(project)
-                .createFileFromText(fileName, JavaFileType.INSTANCE, content);
-        return WriteAction.compute(() -> {
-            JavaCodeStyleManager.getInstance(project).shortenClassReferences(inMemoryFile);
-            CodeStyleManager.getInstance(project).reformat(inMemoryFile);
-            return inMemoryFile.getText();
-        });
+        // Import can trigger indexing between successive artifact writes. Import shortening
+        // resolves types even for an in-memory file; it must not abort a valid generation batch.
+        if (com.intellij.openapi.project.DumbService.isDumb(project)) return content;
+        try {
+            PsiFile inMemoryFile = PsiFileFactory.getInstance(project)
+                    .createFileFromText(fileName, JavaFileType.INSTANCE, content);
+            return WriteAction.compute(() -> {
+                JavaCodeStyleManager.getInstance(project).shortenClassReferences(inMemoryFile);
+                CodeStyleManager.getInstance(project).reformat(inMemoryFile);
+                return inMemoryFile.getText();
+            });
+        } catch (com.intellij.openapi.project.IndexNotReadyException indexing) {
+            // Index access can also become unavailable before DumbService reports dumb mode.
+            // Return the original, validated source, never partially shortened in-memory text.
+            LOG.info("STUDIO: Preserving generated Java source while indexes are unavailable");
+            return content;
+        }
     }
 
     /**
      * Resolves a generated file's code-navigation target on a background read action. NavigationTarget.forFile
-     * calls PsiJavaFile.getClasses(), which for a freshly written Java file loads stub/index data through the
-     * workspace file index. Publish the target on the EDT, where the view handler is used, and expire pending
+     * captures a smart file pointer; navigating later resolves the current Java declaration rather than
+     * retaining PSI that regeneration or document commits can invalidate. Publish the target on the EDT, where the view handler is used, and expire pending
      * work with the project's initialization service.
      */
     private static void setCodeNavigationTargetAsync(AbstractViewHandlerIntellij componentViewHandler, PsiFile psiFile) {
@@ -1115,6 +1121,23 @@ public class StudioProjectFiles {
     /** Result of {@link #chooseFileAndReadText} - on success path+content are set, on failure only errorMessage. */
     public record TextFileReadResult(String path, String content, String errorMessage) {}
 
+    /** Flush only affected editor buffers before previewing or replacing developer-owned configuration. */
+    public static void saveConfigurationDocuments(Project project, java.util.List<String> paths) {
+        var manager = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance();
+        for (String path : paths) {
+            var file = getVirtualFile(project, path);
+            if (file == null) continue;
+            var document = manager.getCachedDocument(file);
+            if (document != null && manager.isDocumentUnsaved(document)) manager.saveDocument(document);
+        }
+    }
+
+    public static void refreshConfigurationDirectory(Project project) {
+        String base = project.getBasePath();
+        if (base != null) com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                .refreshIoFiles(java.util.List.of(new java.io.File(base)), true, true, null);
+    }
+
     /**
      * Shows an async file-choose dialog and hands back the chosen file's text content (decoded as UTF-8 via
      * the VirtualFile's own API rather than java.nio.file, so this also works when the file lives on a
@@ -1124,6 +1147,16 @@ public class StudioProjectFiles {
      * @param callback receives the file's path+content, or a read-failure detail message; never called on cancel
      */
     public static void chooseFileAndReadText(Project project, FileChooserDescriptor descriptor, Consumer<TextFileReadResult> callback) {
+        chooseFileAndReadText(project, descriptor, StandardCharsets.UTF_8, callback);
+    }
+
+    /** Matches Spring Boot's Java-properties decoding, preserving even non-UTF-8 source bytes. */
+    public static void chooseFileAndReadProperties(Project project, FileChooserDescriptor descriptor, Consumer<TextFileReadResult> callback) {
+        chooseFileAndReadText(project, descriptor, StandardCharsets.ISO_8859_1, callback);
+    }
+
+    private static void chooseFileAndReadText(Project project, FileChooserDescriptor descriptor,
+                                            java.nio.charset.Charset encoding, Consumer<TextFileReadResult> callback) {
         openChooserWarmed(project, activeWindowOrNull(), (parent, toSelect) ->
                 FileChooser.chooseFile(descriptor, project, parent, toSelect, virtualFile -> {
                     ModalityState modality = ModalityState.current();
@@ -1131,7 +1164,7 @@ public class StudioProjectFiles {
                         TextFileReadResult result;
                         try {
                             result = new TextFileReadResult(virtualFile.getPath(),
-                                    new String(readBytes(virtualFile), StandardCharsets.UTF_8), null);
+                                    new String(readBytes(virtualFile), encoding), null);
                         } catch (IOException failure) {
                             result = new TextFileReadResult(null, null, failure.getMessage());
                         }
@@ -1236,16 +1269,24 @@ public class StudioProjectFiles {
      * @return the content root if its found, nulll otherwise.
      */
     protected static VirtualFile getSpecificContentRootFromCache(final Project project) {
-        VirtualFile targetContentRoot = null;
-        VirtualFile[] contentRootVFiles = ProjectRootManager.getInstance(project).getContentRoots();
+        return findGeneratedContentRoot(project.getBasePath(), ProjectRootManager.getInstance(project).getContentRoots());
+    }
 
-        for (VirtualFile vFile : contentRootVFiles) {
-            if (vFile.toString().endsWith(StudioProjectFiles.GENERATED_CONTENT_ROOT)) {
-                targetContentRoot = vFile;
-                break;
+    static VirtualFile findGeneratedContentRoot(String basePath, VirtualFile[] roots) {
+        if (basePath == null) return null;
+        String expected = com.intellij.openapi.util.io.FileUtil.toSystemIndependentName(basePath)
+                .replaceAll("/+$", "") + GENERATED_CONTENT_ROOT;
+        for (VirtualFile root : roots) {
+            if (!root.isValid()) continue;
+            String path = root.getPath();
+            if (expected.equals(path)) return root;
+            // Some Maven layouts register separate source/test content roots below generated/.
+            if (path.startsWith(expected + "/")) {
+                VirtualFile generated = root.getFileSystem().findFileByPath(expected);
+                if (generated != null && generated.isValid()) return generated;
             }
         }
-        return targetContentRoot;
+        return null;
     }
 
     /**

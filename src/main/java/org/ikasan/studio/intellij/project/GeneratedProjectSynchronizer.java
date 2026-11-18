@@ -65,6 +65,12 @@ public class GeneratedProjectSynchronizer {
      * An update has been made to the diagram, so we need to reflect this into the code.
      */
     public CompletableFuture<Void> asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(GenerationRequest request) {
+        return asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(request, true);
+    }
+
+    /** Imports defer Maven refresh until their JDK alignment has completed. */
+    public CompletableFuture<Void> asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk(
+            GenerationRequest request, boolean reloadMavenAfterGeneration) {
         CompletableFuture<Void> completion = new CompletableFuture<>();
         if (request.scope() == GenerationRequest.Scope.MODEL_ONLY) {
             completion.complete(null);
@@ -184,7 +190,7 @@ public class GeneratedProjectSynchronizer {
                                 + summary.updated() + " updated, " + summary.unchanged() + " unchanged";
                         LOG.info(StudioDiagnosticEvent.format(StudioDiagnosticEvent.Event.GENERATION_COMPLETED, null, uiContext.getIkasanModule().getIdentity(), null, null));
                         StatusBar.Info.set(summaryMessage, project);
-                        if (pomNeedsUpdate.get()) {
+                        if (pomNeedsUpdate.get() && reloadMavenAfterGeneration) {
                             MavenProjectsManager manager = MavenProjectsManager.getInstance(project);
                             if (manager != null) manager.forceUpdateAllProjectsOrFindAllAvailablePomFiles();
                         }
@@ -306,17 +312,12 @@ public class GeneratedProjectSynchronizer {
      * @param module for this code
      */
     private void saveApplication(Project project, Module module) {
-        // The H2 Launcher
-        // @TODO this only needs to be done once.
-        String h2StartStopPomString;
         try {
-            h2StartStopPomString = H2StartStopTemplate.create(module.getMetaVersion());
-        } catch (StudioGeneratorException e) {
-            throw new StudioRuntimeException("Template generation failed; no project files were changed", e);
-        }
-
-        if (h2StartStopPomString != null) {
-            StudioProjectFiles.createPomFile(project, StudioProjectFiles.GENERATED_CONTENT_ROOT, "h2", h2StartStopPomString);
+            StudioProjectFiles.createJavaSourceFile(project, StudioProjectFiles.GENERATED_CONTENT_ROOT,
+                    StudioProjectFiles.SRC_MAIN_JAVA_CODE, IndependentH2Template.PACKAGE,
+                    IndependentH2Template.CLASS_NAME, IndependentH2Template.create(), null);
+        } catch (java.io.IOException failure) {
+            throw new StudioRuntimeException("Could not generate the independent H2 launcher", failure);
         }
 
         // The SpringBoot startup
@@ -356,6 +357,19 @@ public class GeneratedProjectSynchronizer {
         }
     }
 
+    private static boolean shouldGenerateSupport(Project project, String packageName, String className) {
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            throw new StudioRuntimeException("Cannot verify support customisations: project has no base path");
+        }
+        try {
+            return !org.ikasan.studio.core.importer.SourceModuleImport.preserveSupportCustomisation(
+                    java.nio.file.Path.of(basePath), packageName, className);
+        } catch (java.io.IOException failure) {
+            throw new StudioRuntimeException("Cannot verify support customisations; generation stopped to preserve developer code", failure);
+        }
+    }
+
     /**
      * Save the DebugTransitionComponent base class and its DeepCopyUtil helper - generated directly into
      * the project (rather than pulled in as a jar dependency) so they always compile against whichever
@@ -368,23 +382,27 @@ public class GeneratedProjectSynchronizer {
      */
     private void saveDebugSupportClasses(Project project, Module module) {
         try {
-            String debugTransitionComponentTemplateString = DebugTransitionComponentTemplate.create(module);
-            StudioProjectFiles.authoriseUserJavaReplacement(DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_PACKAGE,
-                    DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_CLASS_NAME);
-            StudioProjectFiles.createJavaSourceFile(project,
-                    StudioProjectFiles.USER_CONTENT_ROOT,
-                    StudioProjectFiles.SRC_MAIN_JAVA_CODE,
-                    DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_PACKAGE,
-                    DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_CLASS_NAME, debugTransitionComponentTemplateString, null);
-
-            String deepCopyUtilTemplateString = DeepCopyUtilTemplate.create(module);
-            StudioProjectFiles.authoriseUserJavaReplacement(DeepCopyUtilTemplate.DEEP_COPY_UTIL_PACKAGE,
-                    DeepCopyUtilTemplate.DEEP_COPY_UTIL_CLASS_NAME);
-            StudioProjectFiles.createJavaSourceFile(project,
-                    StudioProjectFiles.USER_CONTENT_ROOT,
-                    StudioProjectFiles.SRC_MAIN_JAVA_CODE,
-                    DeepCopyUtilTemplate.DEEP_COPY_UTIL_PACKAGE,
-                    DeepCopyUtilTemplate.DEEP_COPY_UTIL_CLASS_NAME, deepCopyUtilTemplateString, null);
+            if (shouldGenerateSupport(project, DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_PACKAGE,
+                    DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_CLASS_NAME)) {
+                String debugTransitionComponentTemplateString = DebugTransitionComponentTemplate.create(module);
+                StudioProjectFiles.authoriseUserJavaReplacement(DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_PACKAGE,
+                        DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_CLASS_NAME);
+                StudioProjectFiles.createJavaSourceFile(project,
+                        StudioProjectFiles.USER_CONTENT_ROOT,
+                        StudioProjectFiles.SRC_MAIN_JAVA_CODE,
+                        DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_PACKAGE,
+                        DebugTransitionComponentTemplate.DEBUG_TRANSITION_COMPONENT_CLASS_NAME, debugTransitionComponentTemplateString, null);
+            }
+            if (shouldGenerateSupport(project, DeepCopyUtilTemplate.DEEP_COPY_UTIL_PACKAGE, DeepCopyUtilTemplate.DEEP_COPY_UTIL_CLASS_NAME)) {
+                String deepCopyUtilTemplateString = DeepCopyUtilTemplate.create(module);
+                StudioProjectFiles.authoriseUserJavaReplacement(DeepCopyUtilTemplate.DEEP_COPY_UTIL_PACKAGE,
+                        DeepCopyUtilTemplate.DEEP_COPY_UTIL_CLASS_NAME);
+                StudioProjectFiles.createJavaSourceFile(project,
+                        StudioProjectFiles.USER_CONTENT_ROOT,
+                        StudioProjectFiles.SRC_MAIN_JAVA_CODE,
+                        DeepCopyUtilTemplate.DEEP_COPY_UTIL_PACKAGE,
+                        DeepCopyUtilTemplate.DEEP_COPY_UTIL_CLASS_NAME, deepCopyUtilTemplateString, null);
+            }
         } catch (StudioGeneratorException e) {
             throw new StudioRuntimeException("Template generation failed; no project files were changed", e);
         }
@@ -783,6 +801,12 @@ public class GeneratedProjectSynchronizer {
         try {
             templateString = PropertiesTemplate.create(module);
             StudioProjectFiles.createFileWithDirectories(project,
+                    org.ikasan.studio.core.generator.HarnessOverridesTemplate.JAVA_PATH,
+                    org.ikasan.studio.core.generator.HarnessOverridesTemplate.javaSource(), null);
+            StudioProjectFiles.createFileWithDirectories(project,
+                    org.ikasan.studio.core.generator.HarnessOverridesTemplate.PATH,
+                    org.ikasan.studio.core.generator.HarnessOverridesTemplate.create(module), null);
+            StudioProjectFiles.createFileWithDirectories(project,
                     org.ikasan.studio.core.generator.ModuleTestWiring.PATH,
                     org.ikasan.studio.core.generator.ModuleTestWiring.create(module), null);
             Map<String, String> applicationProperties = StudioBuildUtils.convertStringToMap(templateString);
@@ -791,24 +815,22 @@ public class GeneratedProjectSynchronizer {
         } catch (StudioGeneratorException e) {
             throw new StudioRuntimeException("Template generation failed; no project files were changed", e);
         }
-        if (templateString != null) {
-            StudioProjectFiles.createPropertiesFile(project, templateString);
-            // Unlike initialisePsiFileHandles() (which calls resolveApplicationPropertiesPsiFile() from a
-            // background pooled thread), this method runs inside CommandProcessor.executeCommand on the EDT
-            // (see asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk) - PsiManager.findFile() inside
-            // resolveApplicationPropertiesPsiFile() hits the workspace file index, which the platform refuses
-            // to do synchronously on the EDT ("Slow operations are prohibited on EDT"). ReadAction.nonBlocking
-            // runs the lookup on a pooled thread and hops back for the (already read-action-safe) nav-target
-            // update, the same pattern used in SendTestMessagePayloadDialog.
-            VirtualFile projectBaseDir = StudioProjectFiles.getProjectBaseDir(project);
-            ReadAction.nonBlocking(() -> resolveApplicationPropertiesPsiFile(projectBaseDir))
-                    .finishOnUiThread(ModalityState.defaultModalityState(), propertiesPsiFile -> {
-                        if (!project.isDisposed()) {
-                            setPropertiesFileNavigationTargets(module, propertiesPsiFile);
-                        }
-                    })
-                    .submit(AppExecutorUtil.getAppExecutorService());
-        }
+        StudioProjectFiles.createPropertiesFile(project, templateString);
+        // Unlike initialisePsiFileHandles() (which calls resolveApplicationPropertiesPsiFile() from a
+        // background pooled thread), this method runs inside CommandProcessor.executeCommand on the EDT
+        // (see asynchGenerateSourceFromModelJsonInstanceAndSaveToDisk) - PsiManager.findFile() inside
+        // resolveApplicationPropertiesPsiFile() hits the workspace file index, which the platform refuses
+        // to do synchronously on the EDT ("Slow operations are prohibited on EDT"). ReadAction.nonBlocking
+        // runs the lookup on a pooled thread and hops back for the (already read-action-safe) nav-target
+        // update, the same pattern used in SendTestMessagePayloadDialog.
+        VirtualFile projectBaseDir = StudioProjectFiles.getProjectBaseDir(project);
+        ReadAction.nonBlocking(() -> resolveApplicationPropertiesPsiFile(projectBaseDir))
+                .finishOnUiThread(ModalityState.defaultModalityState(), propertiesPsiFile -> {
+                    if (!project.isDisposed()) {
+                        setPropertiesFileNavigationTargets(module, propertiesPsiFile);
+                    }
+                })
+                .submit(AppExecutorUtil.getAppExecutorService());
     }
 
     /**

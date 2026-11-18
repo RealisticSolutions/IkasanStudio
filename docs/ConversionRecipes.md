@@ -44,7 +44,7 @@ Generated FTP/SFTP converters expose `public static final String FILENAME_PREFIX
 
 ### Email attachments require a second, separate switch
 
-Attaching a file to an email needs two independent things to be true: the Converter must build the attachment (`EmailPayload.addAttachment`), and the Email Producer's own **hasAttachments** property must be set to `true` - the producer ignores any attachment on the payload while that property is left at its default `false`, with no error raised anywhere. Because of that, the generated attachment call is emitted **commented out**, prefixed with a warning naming the property to enable, and the accompanying default email body only names the file (e.g. `Source file: report.csv`) rather than claiming one is attached. A body promising an attachment that the producer is silently dropping would send a developer chasing a bug that isn't there. Uncomment the call and enable `hasAttachments` together to actually send the file; a custom **Attachment email body** is left untouched either way.
+Attaching a file to an email needs two independent things to be true: the Converter must build the attachment (`EmailPayload.addAttachment`), and the Email Producer's own **hasAttachment** property must be set to `true` - the producer ignores any attachment on the payload while that property is left at its default `false`, with no error raised anywhere. Because of that, the generated attachment call is emitted **commented out**, prefixed with a warning naming the property to enable, and the accompanying default email body only names the file (e.g. `Source file: report.csv`) rather than claiming one is attached. A body promising an attachment that the producer is silently dropping would send a developer chasing a bug that isn't there. Uncomment the call and enable `hasAttachment` together to actually send the file; a custom **Attachment email body** is left untouched either way.
 
 Nulls and unsupported content raise `TransformationException`. Maps are not implicitly converted using `toString()`, and JMS ObjectMessage deserialization is not attempted. Malformed text is rejected rather than replaced. JMS byte messages are read in a loop, including partial reads, and their read cursor is reset. Supplied JMS and local-file recipes are intended for small messages, with a 16 MiB check; use custom streaming logic for large files.
 
@@ -72,3 +72,45 @@ python3 scripts/verify-conversion-recipes.py /tmp/studio-recipe-sources
 The script requires `java`, `javac` and the corresponding artifacts in `~/.m2/repository`; it never downloads dependencies. It checks every recipe, filename/content preservation, generated-filename shape and uniqueness under rapid and concurrent calls, email attachments, partial JMS byte reads, map forwarding, nulls, unsupported objects, malformed text and multi-file rejection. Generated code is compiled with `--release 11` for 3.3.9 and `--release 17` for 4.1.6.
 
 Before release, exercise insertion in a live IntelliJ editor, selection changes followed by Cancel/Apply, the regeneration confirmation, and keyboard navigation in both themes. Automated widget checks do not replace that IDE review.
+
+## File-transfer payload to map
+
+Use **Payload To Map Converter** for the standard Ikasan file-transfer mapping. It accepts
+`org.ikasan.filetransfer.Payload` (for example from FTP/SFTP consumers) and returns a
+`Map<String, Object>` containing `content` as text, `id`, and the payload attributes.
+Studio generates the real `org.ikasan.component.converter.filetransfer.PayloadToMapConverter`;
+no handwritten stub or extra configuration is required. The Converter type supplies the
+`ikasan-component-converter` dependency. This component is available in V3.3.9, V4.1.6
+and V5.1.0.
+
+Ikasan decodes content using the runtime JVM's default charset and copies attributes
+after `content` and `id`, so attributes with those names override the original entries.
+Use the generic Converter with a custom mapping for explicit charset decoding or binary
+content. This produces a Java Map, not a JMS MapMessage or JSON string; configure any
+subsequent transport conversion separately.
+
+## JMS map message to file-transfer payload
+
+Use **JMS Map Message To Payload Converter** to convert a JMS `MapMessage` into
+`org.ikasan.filetransfer.Payload`, for example before an FTP/SFTP producer.
+It is available in V3.3.9, V4.1.6 and V5.1.0.
+V3 uses `javax.jms.MapMessage`; V4 and V5 use `jakarta.jms.MapMessage`.
+
+The configurable fields are:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| contentAttributeName | content | Entry containing String or byte[] content |
+| idAttributeName | fileName | Entry used as the payload ID |
+| fileNameAttributeName | fileName | Entry copied into the payload's fileName attribute |
+
+Set **idAttributeName** to `id` when the sender uses the ID key produced by
+Payload To Map Converter. The input must still be transported as a JMS MapMessage;
+a plain Java Map is not accepted.
+
+String content uses the runtime JVM's default charset; byte arrays are preserved.
+Missing content or other content types fail conversion. The converter also copies
+`referencePayload` and `relativePath`; it does not copy arbitrary map entries.
+Studio generates the real Ikasan converter and its configuration setters, exposes
+the three settings in generated application properties, and assigns a configuration
+resource ID. Keep that ID stable when using runtime configuration overrides.
