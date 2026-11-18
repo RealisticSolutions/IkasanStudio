@@ -2,7 +2,7 @@
 
 Harnesses support local development. Start with a disposable project and test endpoints, apply **Update Code**, and restart the module whenever generated configuration changes. Actions are shown only for components and states that support them. Toolbar harness start/stop controls manage the module's FTP, local SFTP and mail test harnesses; they do not start a JMS broker or the application.
 
-A green badge on **Harness Start** indicates available harness services: this project’s running FTP/SFTP/SMTP servers, or an SMTP listener at the effective address used by its email components. Hover over Start or Stop for the service list; mail servers owned elsewhere are labelled **SMTP (shared/external)**. Availability does not grant ownership or permission to stop another project’s server. Both controls remain available during partial startup or after a failure; Start starts missing services and Stop stops the harnesses.
+The Harness group distinguishes ownership from availability. A green badge and **running here** mean this project owns running servers. An amber badge and **shared only** mean its own servers are stopped but a shared/external SMTP listener is available. **Stopped here** means neither is reported. Hover over Stop for ownership details. Stop remains available for recovery of an untracked local mail harness; a shared server does not become owned by this project.
 
 ## Mix harness and configured connections
 
@@ -56,7 +56,7 @@ read `studio.harness.ftp.*` properties work with the launch-injected endpoint wi
 regeneration; the static generated port default is superseded only for selected launches.
 
 Regenerate existing projects before first use. For a V5.1.0 project locked to an older
-adapter revision, explicitly adopt revision **1.0.7** first. The generated inventory permits
+adapter revision, explicitly adopt revision **1.0.8** first. The generated inventory permits
 normal IntelliJ Application launches when the Studio editor is closed. Maven, JUnit and
 command-line launches do not automatically enable Studio harness overrides.
 

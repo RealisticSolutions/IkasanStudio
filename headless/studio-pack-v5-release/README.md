@@ -1,7 +1,7 @@
 # Ikasan 5.1.0 released meta-pack
 
 `studio-pack-v5-release` supplies **V5.1.0**, runtime **5.1.0**, independent pack revision
-**1.0.7** and generator API **4**. It is included in normal Studio plugin and CLI distributions.
+**1.0.8** and generator API **4**. It is included in normal Studio plugin and CLI distributions.
 It requires no snapshot setting or separate installation. Generated applications require
 **JDK 25**; the Studio plugin, generator and resource-only pack authoring build use JDK 17.
 
@@ -51,3 +51,5 @@ Revision 1.0.5 declares concrete FTP/SFTP producer runtime identities for REST i
 Revision 1.0.6 imports Local File Consumer filename lists and SFTP Consumer duplicate-filter/move controls, and declares verified unmapped runtime defaults. Existing model locks require explicit revision adoption. See the [runtime configuration audit](../../docs/RuntimeImportConfigurationAudit.md) for remaining unsupported settings and verification limits.
 
 Revision 1.0.7 recognises the library `org.ikasan.component.endpoint.util.producer.DevNull` runtime class as Dev Null Producer. Runtime import now retains builder construction instead of creating a Generic Producer that requires an external Spring bean. Existing model locks require explicit revision adoption; re-import to correct previously imported Generic Producer classifications.
+
+Revision 1.0.8 applies wrapped-component settings to the outer component rather than its delegate. Runtime import uses the declared delegate contract, and source review can offer a unique compatible implementation for explicit registration. Existing V5 model locks require explicit revision adoption before regeneration. Re-import previously imported wrapper/delegate components to correct their saved implementation identity.

@@ -58,10 +58,18 @@ public final class HarnessControlActions {
         return hasHarnesses(currentModule());
     }
 
-    /** Owned servers and model-referenced shared SMTP availability; cached reads only on the EDT. */
-    public List<String> runningHarnesses() {
-        if (project.isDisposed()) return List.of();
+    public record HarnessStatus(List<String> owned, List<String> shared) {
+        public HarnessStatus { owned = List.copyOf(owned); shared = List.copyOf(shared); }
+        public List<String> available() { return java.util.stream.Stream.concat(owned.stream(), shared.stream()).toList(); }
+    }
+
+    public List<String> runningHarnesses() { return status().available(); }
+
+    /** Availability and ownership are separate; cached reads only on the EDT. */
+    public HarnessStatus status() {
+        if (project.isDisposed()) return new HarnessStatus(List.of(), List.of());
         var running = new java.util.ArrayList<String>();
+        var shared = new java.util.ArrayList<String>();
         var ftp = project.getService(org.ikasan.studio.intellij.runtime.TestFtpServerService.class);
         var sftp = project.getService(org.ikasan.studio.intellij.runtime.TestSftpServerService.class);
         var mail = project.getService(TestMailServerSessionService.class);
@@ -75,9 +83,9 @@ public final class HarnessControlActions {
                     .anyMatch(element -> mail.isListening(
                             org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effectiveMailHost(project, element),
                             org.ikasan.studio.intellij.runtime.HarnessEndpointSettings.effectiveMailPort(project, element))))
-                running.add(org.ikasan.studio.ui.StudioBundle.message("harness.smtp.sharedAvailable"));
+                shared.add(org.ikasan.studio.ui.StudioBundle.message("harness.smtp.sharedAvailable"));
         }
-        return List.copyOf(running);
+        return new HarnessStatus(running, shared);
     }
 
     static boolean hasHarnesses(Module module) {

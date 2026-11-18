@@ -990,6 +990,15 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
             gc1.weightx = 1;
             gc1.gridy = 0;
 
+            if (getSelectedComponent() instanceof Module module) {
+                var http = componentPropertyEditBoxMap.get(ComponentPropertyMeta.APPLICATION_PORT_NUMBER_NAME);
+                var database = componentPropertyEditBoxMap.get(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME);
+                var web = componentPropertyEditBoxMap.get(ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME);
+                if (http != null) {
+                    if (database != null) database.configureModulePortDefault(http, 1, componentInitialisation, module.hasAutomaticH2Default(ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME));
+                    if (web != null) web.configureModulePortDefault(http, 2, componentInitialisation, module.hasAutomaticH2Default(ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME));
+                }
+            }
             harnessOverrideStatus = null;
             if (getSelectedComponent() instanceof FlowElement endpoint
                     && !org.ikasan.studio.core.model.analysis.HarnessOverrides.kind(
@@ -1418,6 +1427,11 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
                     .displayLabel(StudioBundle.message("conversion." + recipeKey)).build(), componentProperty.getValue());
         }
         ComponentPropertyEditRow componentPropertyEditRow = new ComponentPropertyEditRow(project, componentProperty, componentInitialisation, listenerForAnyEditChanges, componentPropertyEditBoxMap);
+        if (getSelectedComponent() instanceof Module) {
+            String key = componentProperty.getMeta().getPropertyName();
+            if (ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME.equals(key)) componentPropertyEditRow.prepareModulePortDefaultButton(1);
+            if (ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME.equals(key)) componentPropertyEditRow.prepareModulePortDefaultButton(2);
+        }
         if (!componentInitialisation && getSelectedComponent() instanceof Module
                 && VERSION.equals(componentProperty.getMeta().getPropertyName())) {
             var choice = componentPropertyEditRow.getInputField().getPropertyChoiceValueField();
@@ -1570,11 +1584,28 @@ public class ComponentPropertiesPanel extends PropertiesPanel {
      * Validates the values populated
      * @return a populated ValidationInfo array if there are any validation issues.
      */
+    static List<ValidationInfo> validateModulePorts(Map<String, ComponentPropertyEditRow> rows) {
+        List<ValidationInfo> result = new ArrayList<>();
+        var ports = new java.util.HashSet<Integer>();
+        for (String key : List.of(ComponentPropertyMeta.APPLICATION_PORT_NUMBER_NAME,
+                ComponentPropertyMeta.H2_DB_PORT_NUMBER_NAME, ComponentPropertyMeta.H2_WEB_PORT_NUMBER_NAME)) {
+            var row = rows.get(key);
+            if (row == null) continue;
+            String value = Objects.toString(row.getValue(), "");
+            if (value.isBlank()) continue; // Mandatory row validation supplies the missing-value message.
+            if (!value.matches("[0-9]{1,5}") || Integer.parseInt(value) < 1 || Integer.parseInt(value) > 65535)
+                result.add(new ValidationInfo(StudioBundle.message("modulePorts.invalid", key), row.getOverridingInputField()));
+            else if (!ports.add(Integer.parseInt(value))) result.add(new ValidationInfo(StudioBundle.message("modulePorts.duplicate", key), row.getOverridingInputField()));
+        }
+        return result;
+    }
+
     protected java.util.List<ValidationInfo> doValidateAll() {
         List<ValidationInfo> result = new ArrayList<>();
         for (final ComponentPropertyEditRow editPair: getComponentPropertyEditBoxList()) {
             result.addAll(editPair.doValidateAll());
         }
+        if (getSelectedComponent() instanceof Module) result.addAll(validateModulePorts(componentPropertyEditBoxMap));
         if (getSelectedComponent() != null) result.addAll(ConversionRecipeEditor.validate(
                 getSelectedComponent().getComponentMeta().getConversionRecipes(), componentPropertyEditBoxMap));
         if (getSelectedComponent() instanceof FlowElement router && router.getComponentMeta().isRouter()

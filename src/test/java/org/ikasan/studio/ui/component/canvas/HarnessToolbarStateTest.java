@@ -33,9 +33,16 @@ class HarnessToolbarStateTest {
             try { start.getIcon().paintIcon(start, graphics, 0, 0); }
             finally { graphics.dispose(); }
 
+            var ownedIcon = start.getIcon();
+            var shared = new org.ikasan.studio.ui.actions.HarnessControlActions.HarnessStatus(List.of(), List.of(StudioBundle.message("harness.smtp.sharedAvailable")));
+            CanvasPanel.updateHarnessState(start, stop, shared);
+            assertThat(start.getIcon()).isNotSameAs(AllIcons.Actions.Execute).isNotSameAs(ownedIcon);
+            assertThat(CanvasPanel.harnessTitle(shared)).isEqualTo(StudioBundle.message("label.HarnessSharedOnly"));
+            assertThat(stop.getToolTipText()).startsWith(StudioBundle.message("tooltip.NoOwnedHarnessesRunning"));
+            assertThat(start.getToolTipText()).contains(StudioBundle.message("harness.smtp.sharedAvailable"));
             CanvasPanel.updateHarnessState(start, stop, List.of());
             assertThat(start.getIcon()).isSameAs(AllIcons.Actions.Execute);
-            assertThat(stop.getToolTipText()).isEqualTo(StudioBundle.message("tooltip.StopHarnesses"));
+            assertThat(stop.getToolTipText()).isEqualTo(StudioBundle.message("tooltip.NoOwnedHarnessesRunning"));
         });
     }
 }

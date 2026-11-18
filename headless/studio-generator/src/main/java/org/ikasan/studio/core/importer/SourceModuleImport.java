@@ -255,6 +255,15 @@ public final class SourceModuleImport {
         beans = beans.stream().map(bean -> {
             String type = resolve(bean.type(), generatedUnits.get(bean.generatedFile()), knownTypes);
             boolean supplied = provided(providers, new BeanRequirement(bean.name(), type, bean.generatedFile(), bean.line(), bean.sourceDefinitions()));
+            if (!supplied && !classes.containsKey(type)) {
+                String contract = type;
+                var compatible = classes.keySet().stream().filter(name -> concreteSourceType(name, classes)
+                        && sourceAssignableTo(name, contract, classes, new HashSet<>())).toList();
+                // Never choose among multiple implementations of the same injected contract.
+                if (compatible.size() == 1) {
+                    type = compatible.get(0); recommended.add(classes.get(type));
+                }
+            }
             return new BeanRequirement(bean.name(), type, bean.generatedFile(), bean.line(), bean.sourceDefinitions(), supplied);
         }).toList();
         // Conservative source closure: explicit imports, wildcard imports used in the AST, and same-package types.
@@ -445,6 +454,30 @@ public final class SourceModuleImport {
                 .addOption(new DefaultConfigurationOption(
                         ConfigOption.END_OF_LINE_CHARACTER, "\n"));
         return first.getResult().get().toString(printing).equals(second.getResult().get().toString(printing));
+    }
+
+    private static boolean concreteSourceType(String name, Map<String, JavaSource> classes) {
+        var source = classes.get(name);
+        if (source == null) return false;
+        return source.unit().getTypes().stream().filter(type -> (source.pkg().isEmpty() ? "" : source.pkg() + ".")
+                        .concat(type.getNameAsString()).equals(name))
+                .filter(com.github.javaparser.ast.body.TypeDeclaration::isClassOrInterfaceDeclaration)
+                .map(com.github.javaparser.ast.body.TypeDeclaration::asClassOrInterfaceDeclaration)
+                .anyMatch(type -> !type.isInterface() && !type.isAbstract() && type.isPublic());
+    }
+
+    private static boolean sourceAssignableTo(String name, String contract, Map<String, JavaSource> classes, Set<String> seen) {
+        if (name.equals(contract)) return true;
+        if (!seen.add(name) || !classes.containsKey(name)) return false;
+        var source = classes.get(name);
+        for (var type : source.unit().getTypes()) {
+            if (!((source.pkg().isEmpty() ? "" : source.pkg() + ".") + type.getNameAsString()).equals(name)
+                    || !type.isClassOrInterfaceDeclaration()) continue;
+            var declaration = type.asClassOrInterfaceDeclaration();
+            for (var parent : java.util.stream.Stream.concat(declaration.getImplementedTypes().stream(), declaration.getExtendedTypes().stream()).toList())
+                if (sourceAssignableTo(resolve(parent.getNameWithScope(), source.unit(), classes.keySet()), contract, classes, seen)) return true;
+        }
+        return false;
     }
 
     private static Set<String> references(Node node, CompilationUnit unit, Set<String> names) {

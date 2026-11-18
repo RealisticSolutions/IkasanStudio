@@ -28,6 +28,30 @@ class ModuleTest {
         ComponentLibrary.refreshComponentLibrary(BASE_META_PACK);
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"V3.3.9", "V4.1.6", "V5.1.0"})
+    void h2DefaultsFollowHttpOnlyWhileUnset(String pack) throws Exception {
+        var module = new Module(pack);
+        module.setPort("12410"); module.defaultUnsetMandatoryProperties();
+        assertEquals("12411", module.getH2PortNumber()); assertEquals("12412", module.getH2WebPortNumber());
+        assertTrue(module.hasAutomaticH2Default("h2DbPortNumber"));
+        assertFalse(org.ikasan.studio.core.io.ComponentIO.toJson(module).contains("automaticH2Defaults"));
+        module.setPort("12500"); module.defaultUnsetMandatoryProperties();
+        assertEquals("12411", module.getH2PortNumber()); assertEquals("12412", module.getH2WebPortNumber());
+        module.setH2DbPortNumber("23000"); module.setH2WebPortNumber(null); module.defaultUnsetMandatoryProperties();
+        assertEquals("23000", module.getH2PortNumber()); assertEquals("12502", module.getH2WebPortNumber());
+        assertFalse(module.hasAutomaticH2Default("h2DbPortNumber"));
+    }
+
+    @Test void h2DefaultsUseDeclaredHttpDefaultAndNeverOverflow() throws Exception {
+        var module = new Module(BASE_META_PACK); module.defaultUnsetMandatoryProperties();
+        assertEquals(Integer.toString(Integer.parseInt(module.getPort()) + 1), module.getH2PortNumber());
+        assertEquals(Integer.toString(Integer.parseInt(module.getPort()) + 2), module.getH2WebPortNumber());
+        assertEquals("65535", Module.derivedH2Port("65534", 1));
+        assertNull(Module.derivedH2Port("65534", 2)); assertNull(Module.derivedH2Port("65535", 1));
+        for (String invalid : List.of("", "${PORT}", "-1", "0", "65536", "123456789012345")) assertNull(Module.derivedH2Port(invalid, 1));
+    }
+
     /**
      * This test can be expanded to guarentee and even document what changes between one version and the next.
      */

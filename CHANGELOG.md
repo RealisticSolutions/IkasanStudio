@@ -5,6 +5,12 @@ version's notes, or the Unreleased notes while that version is being prepared.
 
 ## [Unreleased]
 
+- Default unset module H2 ports to HTTP + 1 / + 2 during creation and runtime import; preserve explicit values, provide per-port Default controls and validate port ranges and duplicate local service ports.
+
+- Distinguish project-owned running harnesses (green) from shared-only SMTP availability (amber), with visible group status and explicit Stop ownership guidance.
+
+- Preserve wrapper/delegate contracts during runtime import instead of treating an outer component as its own delegate; offer unique compatible source implementations for reviewed Spring registration and leave ambiguous matches unresolved. Apply configuration setters to the outer wrapper in all bundled templates and advance the released V5.1.0 adapter to revision 1.0.8.
+
 - Show shared/external SMTP availability in the Harness running indicator without claiming ownership; retain cached endpoint checks and restore idle state when the listener disappears.
 
 - Add Copy all new to source comparison to stage missing destination files together while preserving existing files, dependencies and staged edits.

@@ -225,7 +225,6 @@ public final class IkasanRuntimeImport {
             Module base = new Module(pack);
             base.setName(required(topology, "name"));
             base.setApplicationPackageName(packageName);
-            base.defaultUnsetMandatoryProperties();
             JsonNode port = topology.get("port");
             if (port != null && !port.isNull()) {
                 String supplied = port.asText();
@@ -233,9 +232,26 @@ public final class IkasanRuntimeImport {
                         || Integer.parseInt(supplied) < 1 || Integer.parseInt(supplied) > 65535)
                     throw problem("The module metadata port must be an integer from 1 to 65535. Correct the export before importing.");
                 base.setPort(Integer.toString(Integer.parseInt(supplied)));
-            } else {
+            }
+            base.defaultUnsetMandatoryProperties();
+            if (port == null || port.isNull()) {
                 review.add("Application HTTP port was not supplied in the module metadata. Verify Studio's default port "
                         + base.getPort() + " against the original application before running.");
+            }
+            if (base.getH2PortNumber() == null || base.getH2WebPortNumber() == null) {
+                Set<String> usedPorts = new HashSet<>(); usedPorts.add(base.getPort());
+                if (base.getH2PortNumber() != null) usedPorts.add(base.getH2PortNumber());
+                if (base.getH2WebPortNumber() != null) usedPorts.add(base.getH2WebPortNumber());
+                for (String key : List.of("h2DbPortNumber", "h2WebPortNumber")) if (base.getPropertyValue(key) == null) {
+                    String fallback = Objects.toString(base.getComponentMeta().getMetadata(key).getDefaultValue(), "");
+                    if (!fallback.matches("[0-9]{1,5}") || Integer.parseInt(fallback) < 1
+                            || Integer.parseInt(fallback) > 65535 || !usedPorts.add(Integer.toString(Integer.parseInt(fallback))))
+                        throw problem("H2 ports cannot be derived from HTTP port " + base.getPort() + " and this pack has no safe fallback. Supply explicit H2 ports in a Studio model import.");
+                    base.setPropertyValue(key, fallback);
+                }
+                review.add("H2 ports could not be derived within 1–65535 from application HTTP port " + base.getPort()
+                        + ". Using H2 database port " + base.getH2PortNumber() + " and web console port " + base.getH2WebPortNumber()
+                        + " instead. Review these local ports before running.");
             }
             ObjectNode design = (ObjectNode) JSON.readTree(ComponentIO.toJson(base));
             // Runtime metadata supplies per-flow startup controls, not a module-wide default.
@@ -346,15 +362,24 @@ public final class IkasanRuntimeImport {
             for (String key : List.of("description", "configurationId"))
                 if (raw.hasNonNull(key)) target.set(key, raw.get(key));
             if (meta.isGeneratesUserImplementedClass()) {
-                target.put("userImplementedClassName", required(raw, "implementingClass"));
+                String implementation = required(raw, "implementingClass");
+                boolean wrapped = meta.isUseImplementingClassInFactory();
+                if (wrapped) {
+                    String contract = meta.getVerificationImplementationContract();
+                    if (contract == null || contract.isBlank() || contract.equals(meta.getImplementingClass()))
+                        throw problem("Component " + entry.getKey() + ": the pack must declare a delegate implementation contract for its wrapper.");
+                    implementation = contract;
+                }
+                target.put("userImplementedClassName", implementation);
                 if (!meta.getAllowableProperties().containsKey("requiresStub"))
                     throw problem("Component " + entry.getKey() + ": the pack cannot preserve this existing implementation without generating a replacement.");
                 target.put("requiresStub", false);
                 for (String typeProperty : List.of("fromType", "toType")) {
                     if (meta.getAllowableProperties().containsKey(typeProperty)) target.put(typeProperty, "java.lang.Object");
                 }
-                String implementation = required(raw, "implementingClass");
-                String message = flowName + " → " + entry.getKey() + ": supply existing implementation " + implementation + " and its Spring bean/wiring.";
+                String message = flowName + " → " + entry.getKey() + (wrapped
+                        ? ": supply the original delegate implementing " + implementation + " for wrapper " + meta.getImplementingClass() + " and its Spring bean/wiring."
+                        : ": supply existing implementation " + implementation + " and its Spring bean/wiring.");
                 review.add(message);
                 reviewItems.add(new ReviewItem(ReviewKind.IMPLEMENTATION, ref, implementation, "", message));
             }

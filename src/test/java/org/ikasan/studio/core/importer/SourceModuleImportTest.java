@@ -156,6 +156,42 @@ class SourceModuleImportTest {
                 .anyMatch(a -> a.kind() == SourceModuleImport.ReviewKind.SCAN && a.subject().contains("Missing runtime context factory: " + CONTEXT_BINARY));
     }
 
+    @Test void uniqueSourceImplementationOfInjectedContractIsOfferedForRegistration() throws Exception {
+        fixture();
+        write(target(), "generated/src/main/java/studio/ComponentFactory.java", """
+                package studio;
+                class ComponentFactory { @javax.annotation.Resource customer.contract.Rule delegate; }
+                """);
+        write(source(), "src/main/java/org/customer/ConcreteRule.java", """
+                package org.customer;
+                import customer.contract.Rule;
+                @org.springframework.stereotype.Component
+                public class ConcreteRule implements Rule { }
+                """);
+        write(target(), "generated/src/main/java/org/ikasan/studio/boot/Application.java", """
+                package org.ikasan.studio.boot;
+                @org.springframework.context.annotation.ComponentScan("org.ikasan.studio.boot") class Application { }
+                """);
+        var analysis = analyse();
+        assertThat(analysis.beans()).extracting(SourceModuleImport.BeanRequirement::type).containsExactly("org.customer.ConcreteRule");
+        var selected = Set.of("src/main/java/org/customer/ConcreteRule.java");
+        assertThat(SourceModuleImport.reviewActions(analysis, Set.of(), Set.of()))
+                .anyMatch(a -> a.kind() == SourceModuleImport.ReviewKind.SOURCE && a.subject().endsWith("ConcreteRule.java"));
+        assertThat(SourceModuleImport.previewSpringRegistration(analysis, selected, Map.of()).components())
+                .containsExactly("org.customer.ConcreteRule");
+    }
+
+    @Test void multipleSourceImplementationsAreNotChosenForAnInjectedContract() throws Exception {
+        fixture();
+        write(target(), "generated/src/main/java/studio/ComponentFactory.java", "package studio; class ComponentFactory { @javax.annotation.Resource customer.contract.Rule delegate; }");
+        for (String name : List.of("FirstRule", "SecondRule")) write(source(), "src/main/java/org/customer/" + name + ".java",
+                "package org.customer; @org.springframework.stereotype.Component public class " + name + " implements customer.contract.Rule { }");
+        var analysis = analyse();
+        assertThat(analysis.beans()).extracting(SourceModuleImport.BeanRequirement::type).containsExactly("customer.contract.Rule");
+        assertThat(SourceModuleImport.previewSpringRegistration(analysis,
+                Set.of("src/main/java/org/customer/FirstRule.java", "src/main/java/org/customer/SecondRule.java"), Map.of())).isNull();
+    }
+
     @Test void recommendsExactImplementationsAndHelpersButRequiresReviewOfOriginalWiring() throws Exception {
         fixture(); var analysis = analyse();
         assertThat(analysis.files().stream().filter(SourceModuleImport.FileChoice::recommended).map(SourceModuleImport.FileChoice::destination))

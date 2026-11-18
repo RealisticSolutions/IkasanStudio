@@ -44,6 +44,50 @@ class IkasanRuntimeImportTest {
                 """);
     }
 
+    @ParameterizedTest @ValueSource(strings={"V3.3.9", "V4.1.6", "V5.1.0"})
+    void wrappedComponentsImportTheirDelegateContractInsteadOfTheOuterRuntimeClass(String pack) throws Exception {
+        var input = topology(pack); var flow = (ObjectNode) input.path("flows").get(0);
+        var consumer = flow.path("consumer").deepCopy(); var log = component(pack, "Logging Producer", "Log");
+        flow.putArray("flowElements").add(component(pack, "Default Message Filter", "Wrapped").put("configurationId", "wrapped-config")).add(log).add(consumer);
+        var transitions = flow.putArray("transitions");
+        transitions.addObject().put("from", "Poll").put("to", "Wrapped").put("name", "default");
+        transitions.addObject().put("from", "Wrapped").put("to", "Log").put("name", "default");
+        var result = IkasanRuntimeImport.convert(input.toString(), configuration().toString(), pack, "org.example");
+        var module = ComponentIO.validatePersistedModuleJson(result.studioJson(), "test", false);
+        var importedFlow = module.getFlows().get(0);
+        var wrapped = importedFlow.getFlowElementsNoExternalEndPoints().stream()
+                .filter(e -> "Wrapped".equals(e.getComponentName())).findFirst().orElseThrow();
+        String contract = wrapped.getComponentMeta().getVerificationImplementationContract();
+        assertThat(contract).isEqualTo("org.ikasan.spec.component.filter.FilterRule");
+        assertThat(wrapped.getPropertyValueAsString("userImplementedClassName")).isEqualTo(contract);
+        assertThat(wrapped.getPropertyValue("requiresStub")).isEqualTo(false);
+        String generated = org.ikasan.studio.core.generator.FlowsComponentFactoryTemplate.create("org.ikasan.studio.boot.flow.orders", module, importedFlow);
+        assertThat(generated).contains(contract + " wrapped;")
+                .contains("new org.ikasan.filter.DefaultMessageFilter(wrapped)")
+                .doesNotContain("org.ikasan.filter.DefaultMessageFilter wrapped;")
+                .contains("component.setConfiguredResourceId(")
+                .doesNotContain("wrapped.setConfiguredResourceId(");
+        assertThat(result.review()).anyMatch(line -> line.contains("original delegate implementing " + contract));
+    }
+
+    @ParameterizedTest @ValueSource(strings={"V3.3.9", "V4.1.6", "V5.1.0"})
+    void derivesH2PortsFromImportedHttpPort(String pack) throws Exception {
+        var input = topology(pack).put("port", 12410);
+        var result = IkasanRuntimeImport.convert(input.toString(), configuration().toString(), pack, "org.example");
+        var module = ComponentIO.validatePersistedModuleJson(result.studioJson(), "test", false);
+        assertThat(module.getPort()).isEqualTo("12410");
+        assertThat(module.getH2PortNumber()).isEqualTo("12411");
+        assertThat(module.getH2WebPortNumber()).isEqualTo("12412");
+    }
+
+    @Test void validHighHttpPortDoesNotProduceInvalidH2Defaults() throws Exception {
+        var result = IkasanRuntimeImport.convert(topology("V3.3.9").put("port", 65535).toString(), configuration().toString(), "V3.3.9", "org.example");
+        var module = ComponentIO.validatePersistedModuleJson(result.studioJson(), "test", false);
+        assertThat(module.getPort()).isEqualTo("65535");
+        assertThat(module.getH2PortNumber()).isEqualTo("12451"); assertThat(module.getH2WebPortNumber()).isEqualTo("12452");
+        assertThat(result.review()).anyMatch(line -> line.contains("H2 ports could not be derived"));
+    }
+
     @Test void structuredReviewRetainsOriginalMessagesAndExactComponentIdentities() throws Exception {
         String pack = "V4.1.6";
         var input = topology(pack);

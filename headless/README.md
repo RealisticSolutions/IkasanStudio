@@ -11,7 +11,7 @@ This standalone Gradle build uses Java 17 and Maven libraries only. Running it d
 | `org.ikasan.studio:studio-test-kit:0.1.0-SNAPSHOT` | Pack validation/rendering helpers and a reusable JUnit Jupiter contract | Generator and JUnit Jupiter API |
 | `org.ikasan.studio:studio-pack-v3:0.1.0-SNAPSHOT` | V3.3.9 descriptors, templates and images | None |
 | `org.ikasan.studio:studio-pack-v4:0.1.0-SNAPSHOT` | V4.1.6 descriptors, templates and images | None |
-| `org.ikasan.studio:studio-pack-v5-release:1.0.7` | V5.1.0 released descriptors, templates and images; generated applications use JDK 25 | None |
+| `org.ikasan.studio:studio-pack-v5-release:1.0.8` | V5.1.0 released descriptors, templates and images; generated applications use JDK 25 | None |
 | `org.ikasan.studio:studio-bundled-packs:0.1.0-SNAPSHOT` | Bundle selecting exact official pack revisions | All three released pack artifacts |
 
 These are initial development artifact versions, independent of the plugin version. Nothing is automatically published remotely. Each official pack takes its artifact version from its own `metapack.json`. The bundled-packs artifact has no pack resources; its dependency metadata selects all three exact released pack revisions. See [Independent pack releases](../docs/IndependentMetaPackArtifacts.md) for versioning and release commands.

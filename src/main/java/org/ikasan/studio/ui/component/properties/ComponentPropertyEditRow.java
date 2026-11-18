@@ -56,6 +56,7 @@ public class ComponentPropertyEditRow {
     // change to its source field live. A genuine keystroke in this field clears it permanently, the same way
     // showingDefaultOnly is cleared, so a deliberate override is never silently clobbered by further auto-sync.
     private boolean autoDerivedValue = false;
+    private java.util.function.Supplier<Object> contextualDefault;
     private JButton defaultValueButton;
     private JButton chooseValueButton;
     private JCheckBox rowOverwriteCheckBox;
@@ -565,7 +566,36 @@ public class ComponentPropertyEditRow {
      * (and so nothing is written into generated code) unless the user goes on to genuinely interact with the
      * field - typing, ticking a checkbox, or picking a choice.
      */
+    void prepareModulePortDefaultButton(int offset) {
+        defaultValueButton = new JButton(StudioBundle.message("button.Default"));
+        defaultValueButton.setToolTipText(StudioBundle.message("message.SetDefaultValueDerivedFrom", "port + " + offset));
+        defaultValueButton.addActionListener(event -> {
+            if (contextualDefault != null) { autoDerivedValue = false; applyContextualDefault(); }
+        });
+    }
+
+    void configureModulePortDefault(ComponentPropertyEditRow http, int offset, boolean initialisation) {
+        configureModulePortDefault(http, offset, initialisation, false);
+    }
+
+    void configureModulePortDefault(ComponentPropertyEditRow http, int offset, boolean initialisation, boolean automaticallyDefaulted) {
+        contextualDefault = () -> org.ikasan.studio.core.model.ikasan.instance.Module.derivedH2Port(
+                Objects.toString(http.getValue(), ""), offset);
+        if (initialisation && (initialValue == null || automaticallyDefaulted)) {
+            autoDerivedValue = true;
+            applyContextualDefault();
+            http.addValueChangeListener(() -> { if (autoDerivedValue) applyContextualDefault(); });
+        }
+    }
+
+    private void applyContextualDefault() {
+        suppressChangeDetection = true;
+        try { propertyValueField.setValue(contextualDefault.get()); showingDefaultOnly = false; }
+        finally { suppressChangeDetection = false; }
+    }
+
     public void setDefaultValue() {
+        if (contextualDefault != null) { applyContextualDefault(); return; }
         resetDataEntryComponentsWithNewValues();
     }
 
@@ -705,7 +735,7 @@ public class ComponentPropertyEditRow {
      * generator's own substitution, not shown to the user as a literal string.
      */
     private Object previewableDefault() {
-        Object defaultValue = componentProperty.getDefaultValue();
+        Object defaultValue = contextualDefault == null ? componentProperty.getDefaultValue() : contextualDefault.get();
         return (defaultValue == null || ComponentPropertyMeta.isSubstitutionValue(defaultValue)) ? null : defaultValue;
     }
 

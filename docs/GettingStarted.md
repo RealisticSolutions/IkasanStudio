@@ -81,3 +81,12 @@ and an existing `maven.compiler.release` property are updated even when no depen
 changes are needed. Configure a matching installed JDK if Studio cannot select one.
 
 For a separate local development database, see [independent H2](IndependentH2.md).
+
+### Module port defaults
+
+New modules default the H2 database port to the application HTTP port + 1 and the H2 web
+console port to HTTP + 2. During initial configuration, untouched H2 defaults follow
+HTTP-port edits. Explicit H2 values are preserved. Later HTTP-port edits do not change
+saved H2 ports; use **Default** beside an H2 port to calculate it again. Port fields
+validate the range 1–65535 and reject duplicate local service ports. Derived defaults do
+not reserve ports; check other running projects/services when starting the application.

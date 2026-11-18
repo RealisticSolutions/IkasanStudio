@@ -46,6 +46,14 @@ anyway** before selection/import is enabled. Approving restores the normal defau
 selections. The completion report records identity evidence and any explicit override.
 Changes to the imported model or checkout identity metadata require a fresh comparison.
 
+Runtime components that wrap a developer-supplied delegate use the meta-pack's declared
+implementation contract during import. The outer runtime class is not used as its own
+delegate. Source comparison can identify one public, concrete implementation of an
+injected contract from its declared interfaces or locally available base classes and
+offer its Spring registration. Multiple compatible implementations remain a manual
+wiring decision; Studio does not choose one arbitrarily. Copy the required source and
+review Spring registration before running the imported module.
+
 When the original factory contains a literal class argument for a missing, meta-pack-declared
 builder setting, **Review builder settings…** offers the recovered value and source location.
 For example, `setObjectClass(Payload.class)` can restore an XML converter's missing JAXB
