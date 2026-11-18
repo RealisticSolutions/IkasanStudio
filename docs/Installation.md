@@ -18,6 +18,6 @@ Offline installation does not make project creation or builds offline: Maven dep
 
 ## Next steps
 
-Run IntelliJ with its supplied runtime. Install and select Java 11 for an Ikasan 3.3.9 application or Java 17 for an Ikasan 4.1.6 application; the project SDK is separate from the IDE runtime. Continue with [Your first module](GettingStarted.md), [known limitations](KnownLimitations.md) and the [video tutorials](../tutorials/README.md).
+Run IntelliJ with its supplied runtime. Install and select Java 11 for an Ikasan 3.3.9 application, Java 17 for an Ikasan 4.1.6 application or Java 25 for an Ikasan 5.1.0 application; the project SDK is separate from the IDE runtime. Continue with [Your first module](GettingStarted.md), [known limitations](KnownLimitations.md) and the [video tutorials](../tutorials/README.md).
 
 Ikasan Studio is distributed under the [BSD 3-Clause License](../LICENSE.txt). Third-party dependencies retain their own licences and notices.

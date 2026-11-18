@@ -1,6 +1,6 @@
 # Release-candidate verification
 
-For the staged first-publication schedule, ownership and Marketplace submission steps, see the
+For release ownership, Marketplace submission and the route from public beta to 1.0, see the
 [Marketplace release plan](MarketplaceReleasePlan.md).
 
 Do not equate a successful build or Plugin Verifier result with an installation or project-workflow test. Keep the candidate ZIP, its SHA-256, reports, IDE builds, runtimes and manual results together.

@@ -7,7 +7,7 @@ Visually design, generate, run and test Ikasan integration applications inside I
 
 ## Ikasan Studio — Public Beta
 
-Build applications for the Ikasan Enterprise Integration Platform (ESB), with support for Ikasan 3.3.9 and 4.1.6.
+Build applications for the Ikasan Enterprise Integration Platform (ESB), with support for Ikasan 3.3.9, 4.1.6 and 5.1.0.
 
 - Compose flows in a graphical editor and configure their components.
 - Generate Java, Maven and application configuration while keeping business implementations in developer-owned source files.
@@ -18,7 +18,7 @@ This public beta is intended for evaluation and feedback. Review the getting-sta
 
 ### Requirements
 
-Generated applications require Java 11 for Ikasan 3.3.9 or Java 17 for Ikasan 4.1.6. See supported versions below for IDE compatibility.
+Generated applications require Java 11 for Ikasan 3.3.9, Java 17 for Ikasan 4.1.6 or Java 25 for Ikasan 5.1.0. See supported versions below for IDE compatibility.
 
 ### Optional AI integration
 
@@ -38,13 +38,13 @@ Optional AI integration lets compatible assistants inspect and update your flow 
 Ikasan Studio is open source under the [BSD 3-Clause License](https://github.com/IkasanEIP/IkasanStudio/blob/main/LICENSE.txt); [browse the source code](https://github.com/IkasanEIP/IkasanStudio).
 <!-- Plugin description end -->
 
-**Builds:** Compare [beta and nightly features](docs/Features.md). [Nightly ZIPs](downloads/) are updated in this repository and installed through IntelliJ’s **Install Plugin from Disk**.
+**Builds:** See [implemented features](docs/Features.md) and the [installation guide](docs/Installation.md). Archives under `downloads/` may represent earlier source revisions; check the release notes and checksum for the artifact you install.
 
 [Get started](#get-started) · [Feature matrix](docs/Features.md) · [Documentation](#documentation) · [Build and contribute](#build-and-contribute) · [Report a problem](#report-a-problem)
 
 ## What you can do
 
-See the [complete feature matrix](docs/Features.md) for capabilities grouped by function, with **Beta** and **Nightly** availability. [Nightly ZIPs](downloads/) are updated in this repository; Ikasan 5 support and the latest source-import workflow are nightly features.
+See the [complete feature matrix](docs/Features.md) for implemented capabilities grouped by function, including Ikasan 5.1.0 and the source-import workflow.
 
 - Design flows with a component palette, property editor and visual connections in IntelliJ's main editor area.
 - Generate application code and configuration while keeping business logic in developer-owned source files.
@@ -91,7 +91,7 @@ See [Supported versions](docs/SupportedVersions.md) and [Known limitations](docs
 
 ### Install and create a module
 
-1. Follow the [installation guide](docs/Installation.md) for Marketplace beta access or installation from a candidate ZIP. For nightly features, use the [GitHub ZIP](downloads/ikasanstudio-1.0.0-beta.1.zip) or [build the plugin](#build-and-contribute).
+1. Follow the [installation guide](docs/Installation.md) for available releases or installation from a candidate ZIP. To use the current source, [build the plugin](#build-and-contribute).
 2. Create a **Maven Archetype** project using `org.ikasan.studio:ikasan-studio-project-archetype` and the version supplied for your candidate. If it is unavailable in your configured repositories, use the [manual archetype fallback](#manual-archetype-fallback).
 3. Allow Maven import and indexing to finish. Studio opens in an editor tab; select the appropriate Ikasan pack and configure the module.
 4. Add a flow, a consumer and the remaining components. Apply their properties, then use the **Regenerate Code** icon in the Module controls to generate from the current in-memory model.
@@ -131,7 +131,7 @@ Studio validates proposals and applies them according to its approval settings. 
 
 | Guide                                                                   | Read it for                                                                                  |
 | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [Feature matrix](docs/Features.md)                                     | Capabilities by functional area, with beta/nightly availability                              |
+| [Feature matrix](docs/Features.md)                                     | Implemented capabilities by functional area                              |
 | [Getting started](docs/GettingStarted.md)                               | Create, configure, run and debug your first module                                           |
 | [Video tutorials](tutorials/README.md)                                  | Recommended viewing order for module development and Studio contribution                     |
 | [Generated verification baselines](docs/GeneratedVerification.md)       | Model-based checks and frozen baselines for migration comparisons                            |

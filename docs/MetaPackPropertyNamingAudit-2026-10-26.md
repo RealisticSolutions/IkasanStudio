@@ -1,5 +1,7 @@
 # Meta-pack property naming audit — 26 October 2026
 
+> Historical evidence for the date in this report. The 5.0.1 snapshot pack and its bundled activation payload have since been removed. Current bundled Ikasan 5 support is V5.1.0 on JDK 25; see [Supported versions](SupportedVersions.md) and the [release-candidate checks](ReleaseCandidateVerification.md). References below to the snapshot describe its historical state, not an available bundled pack.
+
 Reviewed the V3.3.9, V4.1.6 and V5.0.1-SNAPSHOT component descriptors against the approved local Ikasan 3, 4 and 5 source trees. The audit examined explicit setter-name overrides and checked the names of generated setters against methods present in those reference trees. Configuration getters and the relevant builder implementations were inspected for the corrections below. This is a property-naming review, not a replacement for generated-code compilation or release compatibility verification.
 
 ## Corrected Studio property names
